@@ -1,69 +1,64 @@
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite');
+const { MongoClient } = require("mongodb");
 
+let client;
 let db;
 
-async function loadDatabase() {
-  if (!db) {
-    db = await open({
-      filename: './database.sqlite',
-      driver: sqlite3.Database
-    });
-  }
+async function connectDB() {
+  if (db) return db;
+
+  client = new MongoClient(process.env.MONGODB_URL);
+  await client.connect();
+
+  db = client.db("khmer_ai");
+  console.log("✅ MongoDB connected");
   return db;
 }
 
-async function saveDatabase(db) {
-  // SQLite saves automatically
+async function loadDatabase() {
+  const database = await connectDB();
+  const pages = await database.collection("pages").find({}).toArray();
+
+  const result = {};
+  for (const page of pages) {
+    result[page.pageId] = page.data;
+  }
+
+  return result;
 }
 
-function savePageData(pageId, pageData) {
-  const db = loadDatabase();
-  db[pageId] = {
-    ...(db[pageId] || {}),
-    ...pageData,
-  };
-  saveDatabase(db);
+async function saveDatabase(data) {
+  const database = await connectDB();
+
+  for (const pageId of Object.keys(data)) {
+    await database.collection("pages").updateOne(
+      { pageId },
+      { $set: { pageId, data: data[pageId], updatedAt: new Date() } },
+      { upsert: true }
+    );
+  }
 }
 
-function getPageData(pageId) {
-  const db = loadDatabase();
-  return db[pageId] || null;
+async function savePageData(pageId, pageData) {
+  const database = await connectDB();
+
+  await database.collection("pages").updateOne(
+    { pageId },
+    { $set: { pageId, data: pageData, updatedAt: new Date() } },
+    { upsert: true }
+  );
 }
 
-function getPageToken(pageId) {
-  const db = loadDatabase();
-  return db[pageId]?.page_access_token || null;
+async function getPageData(pageId) {
+  const database = await connectDB();
+
+  const page = await database.collection("pages").findOne({ pageId });
+  return page ? page.data : null;
 }
 
-// ===============================================
-// Initialize processed_messages table
-// For webhook deduplication
-// ===============================================
-async function initProcessedMessagesTable() {
-  const database = await open({
-    filename: './database.sqlite',
-    driver: sqlite3.Database
-  });
-  
-  await database.exec(`
-    CREATE TABLE IF NOT EXISTS processed_messages (
-      message_id TEXT PRIMARY KEY,
-      processed_at TEXT NOT NULL,
-      sender_id TEXT,
-      message_text TEXT
-    )
-  `);
-  
-  console.log('✅ processed_messages table initialized');
-  
-  await database.close();
+async function getPageToken(pageId) {
+  const pageData = await getPageData(pageId);
+  return pageData?.page_access_token || null;
 }
-
-// Initialize table on module load
-initProcessedMessagesTable().catch(err => {
-  console.error('❌ Failed to initialize processed_messages table:', err);
-});
 
 module.exports = {
   loadDatabase,
