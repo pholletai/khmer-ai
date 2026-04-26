@@ -1,3 +1,4 @@
+const processedMessages = new Set(); 
 require("dotenv").config();
 
 const express = require("express");
@@ -240,7 +241,17 @@ app.post("/webhook", async (req, res) => {
       
       console.log(`📄 Processing ${messagingEvents.length} messaging event(s)`);
       
-      for (const event of messagingEvents) {
+    for (const event of messagingEvents) {
+      const mid = event.message?.mid;
+
+      if (mid && processedMessages.has(mid)) {
+        console.log("❌ Duplicate ignored:", mid);
+        continue;
+        }
+
+       if (mid) processedMessages.add(mid);
+
+        // IGNORE read receipts
         
         // IGNORE read receipts
         if (event.read) {
