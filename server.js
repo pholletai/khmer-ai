@@ -5,16 +5,21 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
+// Track processed messages to avoid duplicates
 const processedMessages = new Set();
 
+// Clean up old message IDs every hour
 setInterval(() => {
   if (processedMessages.size > 1000) {
-    const oldMessages = Array.from(processedMessages).slice(0, processedMessages.size - 1000);
+    const oldMessages = Array.from(processedMessages).slice(0, processedMessages.size - 500);
     oldMessages.forEach(id => processedMessages.delete(id));
     console.log('🧹 Cleaned up old message IDs');
   }
 }, 3600000);
 
+// ================================================
+// WEBHOOK VERIFICATION (GET)
+// ================================================
 app.get('/webhook', (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'your_verify_token_here';
   const mode = req.query['hub.mode'];
@@ -34,161 +39,109 @@ app.get('/webhook', (req, res) => {
   }
 });
 
+// ================================================
+// WEBHOOK MESSAGE HANDLING (POST)
+// ================================================
 app.post('/webhook', async (req, res) => {
   try {
     const body = req.body;
 
     if (body.object === 'page') {
-      for (const entry of body.entry) {
-        const messagingEvents = entry.messaging;
+      body.entry.forEach(entry => {
+        const webhookEvent = entry.messaging[0];
+        const senderPsid = webhookEvent.sender.id;
 
-        for (const event of messagingEvents) {
-          const mid = event.message?.mid;
+        if (webhookEvent.message) {
+          const messageId = webhookEvent.message.mid;
 
-          if (mid && processedMessages.has(mid)) {
-            console.log('❌ Duplicate ignored:', mid);
-            continue;
+          if (processedMessages.has(messageId)) {
+            console.log('⏭️ Skipping duplicate message:', messageId);
+            return;
           }
 
-          if (event.read) {
-            console.log('📖 Ignoring message_read event');
-            continue;
-          }
-
-          if (event.delivery) {
-            console.log('📬 Ignoring message_delivery event');
-            continue;
-          }
-
-          if (event.message && event.message.is_echo) {
-            console.log('📢 Ignoring message_echo event');
-            continue;
-          }
-
-          if (event.message && !event.message.is_echo) {
-            const messageId = event.message.mid;
-            const senderId = event.sender.id;
-            const messageText = event.message.text || "";
-
-            console.log('\n🆕 NEW USER MESSAGE:');
-            console.log(`   Message ID: ${messageId}`);
-            console.log(`   Sender ID: ${senderId}`);
-            console.log(`   Text: "${messageText}"`);
-
-            if (messageId && processedMessages.has(messageId)) {
-              console.log('⚠️ Duplicate ignored:', messageId);
-              continue;
-            }
-
-            if (messageId) {
-              processedMessages.add(messageId);
-            }
-
-            try {
-              const aiReply = await askAI(senderId, messageText);
-              await sendTextMessage(senderId, aiReply);
-              console.log('✅ Reply sent to customer\n');
-            } catch (error) {
-              console.error('❌ Error processing message:', error.message);
-              await sendTextMessage(
-                senderId,
-                'ขอโทษครับ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้ง'
-              );
-            }
-          }
+          processedMessages.add(messageId);
+          handleMessage(senderPsid, webhookEvent.message);
         }
-      }
+      });
 
-      res.sendStatus(200);
+      res.status(200).send('EVENT_RECEIVED');
     } else {
       res.sendStatus(404);
     }
+
   } catch (error) {
-    console.error('❌ Webhook error:', error);
+    console.error('❌ Error processing webhook:', error);
     res.sendStatus(500);
   }
 });
 
-async function askAI(userId, userMessage) {
-  try {
-    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-    const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+// ================================================
+// MESSAGE HANDLER
+// ================================================
+async function handleMessage(senderPsid, receivedMessage) {
+  let response;
 
-    if (OPENAI_API_KEY) {
-      const response = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
-        {
-          model: 'gpt-4',
-          messages: [
-            { role: 'system', content: 'คุณเป็นผู้ช่วยที่เป็นมิตรและช่วยเหลือดี ตอบเป็นภาษาไทย' },
-            { role: 'user', content: userMessage }
-          ],
-          max_tokens: 500,
-          temperature: 0.7
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      return response.data.choices[0].message.content;
+  if (receivedMessage.text) {
+    const messageText = receivedMessage.text.toLowerCase();
+
+    if (messageText.includes('hello') || messageText.includes('hi') || messageText.includes('ជំរាបសួរ')) {
+      response = {
+        text: 'សួស្តី! 👋 ខ្ញុំជា AI Chatbot។ តើខ្ញុំអាចជួយអ្វីបានទេ?'
+      };
+    } else if (messageText.includes('help') || messageText.includes('ជំនួយ')) {
+      response = {
+        text: 'ខ្ញុំអាចជួយអ្នក:\n✅ ឆ្លើយសំណួរ\n✅ ផ្តល់ព័ត៌មាន\n✅ និងជាច្រើនទៀត!'
+      };
+    } else {
+      response = {
+        text: `អ្នកបានផ្ញើ: "${receivedMessage.text}"\nខ្ញុំទទួលបានសារអ្នកហើយ! 👍`
+      };
     }
 
-    if (ANTHROPIC_API_KEY) {
-      const response = await axios.post(
-        'https://api.anthropic.com/v1/messages',
-        {
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 500,
-          messages: [{ role: 'user', content: userMessage }]
-        },
-        {
-          headers: {
-            'x-api-key': ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      return response.data.content[0].text;
-    }
-
-    return `คุณพูดว่า: "${userMessage}"`;
-  } catch (error) {
-    console.error('❌ AI API Error:', error.message);
-    throw new Error('Failed to get AI response');
+  } else if (receivedMessage.attachments) {
+    response = {
+      text: 'ខ្ញុំទទួលបាន attachment របស់អ្នកហើយ! 📎'
+    };
   }
+
+  await callSendAPI(senderPsid, response);
 }
 
-async function sendTextMessage(recipientId, messageText) {
+// ================================================
+// SEND API
+// ================================================
+async function callSendAPI(senderPsid, response) {
+  const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
+
+  if (!PAGE_ACCESS_TOKEN) {
+    console.error('❌ PAGE_ACCESS_TOKEN is not set!');
+    return;
+  }
+
+  const requestBody = {
+    recipient: { id: senderPsid },
+    message: response
+  };
+
   try {
-    const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-
-    if (!PAGE_ACCESS_TOKEN) {
-      throw new Error('PAGE_ACCESS_TOKEN not configured');
-    }
-
-    const response = await axios.post(
+    const result = await axios.post(
       `https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
-      {
-        recipient: { id: recipientId },
-        message: { text: messageText },
-        messaging_type: 'RESPONSE'
-      }
+      requestBody
     );
-
-    console.log('📤 Message sent successfully:', response.data);
-    return response.data;
+    console.log('✅ Message sent successfully:', result.data);
   } catch (error) {
-    console.error('❌ Send Message Error:', error.response?.data || error.message);
-    throw error;
+    console.error('❌ Error sending message:', error.response?.data || error.message);
   }
 }
 
+// ================================================
+// HEALTH CHECK ENDPOINT
+// ================================================
 app.get('/', (req, res) => {
-  res.send('🤖 Bot Server is Running!');
+  res.json({
+    status: 'Bot Server is Running! ✅',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get('/health', (req, res) => {
@@ -199,13 +152,16 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ================================================
+// START SERVER
+// ================================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('🚀 Server is running on port', PORT);
-  console.log('📝 Webhook URL:', `http://localhost:${PORT}/webhook`);
+  console.log('📊 Webhook URL:', `http://localhost:${PORT}/webhook`);
 });
 
 process.on('SIGTERM', () => {
-  console.log('👋 SIGTERM signal received: closing HTTP server');
+  console.log('⚠️ SIGTERM signal received: closing HTTP server');
   process.exit(0);
 });
