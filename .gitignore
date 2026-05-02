@@ -1,0 +1,7 @@
+.env
+node_modules/
+.expo/
+android/
+ios/
+database-backup.json
+database.json
