@@ -1,8 +1,12 @@
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { askAI } from '@/services/ai';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,14 +20,13 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { askAI } from '@/services/ai';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Message {
   id: string;
   text: string;
   role: 'user' | 'ai';
+  image?: string;
 }
 
 interface ChatSession {
@@ -49,11 +52,26 @@ const HISTORY_KEY = 'khmer_ai_history';
 
 // ─── Quick prompts ────────────────────────────────────────────────────────────
 const QUICK_PROMPTS = [
-  { icon: '✍️', text: 'ជួយខ្ញុំសរសេរ Caption' },
-  { icon: '🌐', text: 'បកប្រែជាអង់គ្លេស' },
-  { icon: '💻', text: 'Python Hello World' },
-  { icon: '📝', text: 'សរសេរ Email ជាផ្លូវការ' },
+  { icon: '✍️', text: 'សរសេរ Caption' },
+  { icon: '🌐', text: 'បកប្រែភាសា' },
+  { icon: '💻', text: 'សរសេរ Code' },
+  { icon: '🖼️', text: 'បង្កើតរូបភាព' },
+  { icon: '🛒', text: 'សរសេរឆ្លើយលក់' },
+  { icon: '📢', text: 'សរសេរ Ads' },
+  { icon: '🧠', text: 'សង្ខេបអត្ថបទ' },
+  { icon: '📩', text: 'សរសេរ Email' },
+  { icon: '🎯', text: 'គំនិត Marketing' },
+  { icon: '💬', text: 'ឆ្លើយ Comment' },
+
+  // Extra options — អាចប្រើសម្រាប់ version expand ឬ category ផ្សេងៗ
+  { icon: '🤖', text: 'សរសេរ Chatbot Script' },
+  { icon: '📊', text: 'វិភាគទិន្នន័យ' },
+  { icon: '🤝', text: 'Follow Up អតិថិជន' },
+  { icon: '📋', text: 'សរសេរ Proposal' },
+  { icon: '🎬', text: 'Script វីដេអូ' },
+  { icon: '🔑', text: 'Keywords SEO' },
 ];
+
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 const C = {
@@ -78,7 +96,33 @@ const C = {
 } as const;
 
 const SIDEBAR_W = 260;
+// ដាក់នៅចន្លោះបន្ទាត់ 95-97 (មុន start function ChatScreen)
+interface PromptProps {
+  icon: string;
+  text: string;
+  col: any; // ឬដាក់ឱ្យចំតាម Type ពណ៌របស់ប្អូន
+  onPress: () => void;
+}
 
+const PromptChip = ({ icon, text, col, onPress }: PromptProps) => (
+  <TouchableOpacity 
+    onPress={onPress}
+    activeOpacity={0.7}
+    style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: col.cardBg,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: col.cardBorder,
+      margin: 4,
+    }}>
+    <Text style={{ fontSize: 16, marginRight: 6 }}>{icon}</Text>
+    <Text style={{ color: col.text, fontSize: 13 }}>{text}</Text>
+  </TouchableOpacity>
+);
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ChatScreen() {
   const router = useRouter();
@@ -101,6 +145,8 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(false);
   const [dots, setDots] = useState('');
   const [search, setSearch] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
@@ -215,6 +261,40 @@ export default function ChatScreen() {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
     }
   }, [activeId, sessions, messages, loading, persist]);
+
+  const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) { alert('ត្រូវការសិទ្ធិចូលប្រើរូបភាព'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+      sendImageMessage(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) { alert('ត្រូវការសិទ្ធិចូលប្រើកាមេរ៉ា'); return; }
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+      sendImageMessage(result.assets[0].uri);
+    }
+  };
+
+  const sendImageMessage = (imageUri: string) => {
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: '📷 បានផ្ញើរូបភាព', image: imageUri };
+    setMessages((prev) => [...prev, userMsg]);
+    setSelectedImage(null);
+  };
+
+  const toggleVoice = () => {
+    setIsRecording((prev) => !prev);
+  };
 
   useEffect(() => {
     if (messages.length > 0) setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
@@ -363,17 +443,23 @@ export default function ChatScreen() {
               <Text style={[styles.welcomeTitle, { color: col.text }]}>ថ្ងៃនេះបងចង់ធ្វើអ្វី?</Text>
               <Text style={[styles.welcomeSub, { color: col.muted }]}>Khmer AI ជួយអ្នកបានគ្រប់បែបយ៉ាង</Text>
               <View style={styles.promptGrid}>
-                {QUICK_PROMPTS.map((q, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={[styles.promptCard, { backgroundColor: col.cardBg, borderColor: col.cardBorder }]}
-                    onPress={() => send(q.text)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.promptIcon}>{q.icon}</Text>
-                    <Text style={[styles.promptText, { color: col.text }]}>{q.text}</Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={{ 
+                flexDirection: 'row', 
+                flexWrap: 'wrap', 
+                justifyContent: 'center', 
+                padding: 8 
+              }}>
+               {QUICK_PROMPTS.map((item, index) => (
+                <PromptChip 
+                 key={index}
+                 icon={item.icon}
+                 text={item.text}
+                 col={col}
+                 onPress={() => send(item.text)}
+                />
+              ))}
+              </View>   
+    
               </View>
             </View>
           </ScrollView>
@@ -423,7 +509,25 @@ export default function ChatScreen() {
 
         {/* Input */}
         <View style={[styles.inputArea, { backgroundColor: col.bg, borderTopColor: col.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
-          <View style={[styles.inputRow, { backgroundColor: col.inputBg, borderColor: col.inputBorder }]}>
+
+          {selectedImage && (
+            <View style={styles.imagePreview}>
+              <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+              <TouchableOpacity style={styles.removeImageBtn} onPress={() => setSelectedImage(null)}>
+                <Ionicons name="close-circle" size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={[styles.inputRow, { backgroundColor: col.inputBg }]}>
+            <TouchableOpacity style={styles.iconBtn} onPress={pickImage}>
+              <Ionicons name="image-outline" size={24} color={col.placeholder} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.iconBtn} onPress={takePhoto}>
+              <Ionicons name="camera-outline" size={24} color={col.placeholder} />
+            </TouchableOpacity>
+
             <TextInput
               ref={inputRef}
               style={[styles.textInput, { color: col.text }]}
@@ -435,15 +539,22 @@ export default function ChatScreen() {
               returnKeyType="send"
               multiline
             />
-            <TouchableOpacity
-              style={[styles.sendBtn, { backgroundColor: input.trim() && !loading ? col.primary : (isDark ? '#3A3A3A' : '#D1D5DB') }]}
-              onPress={() => send(input)}
-              disabled={!input.trim() || loading}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="arrow-up" size={18} color={input.trim() && !loading ? '#fff' : col.muted} />
-            </TouchableOpacity>
+
+            {input.trim() ? (
+              <TouchableOpacity style={[styles.sendBtn, { backgroundColor: col.primary }]} onPress={() => send(input)}>
+                <Ionicons name="send" size={20} color="#fff" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={[styles.iconBtn, isRecording && styles.recordingBtn]} onPress={toggleVoice}>
+                <Ionicons
+                  name={isRecording ? 'mic' : 'mic-outline'}
+                  size={24}
+                  color={isRecording ? '#ef4444' : col.placeholder}
+                />
+              </TouchableOpacity>
+            )}
           </View>
+
           <Text style={[styles.disclaimer, { color: col.muted }]}>Khmer AI អាចធ្វើ​ឱ្យ​មាន​កំ​ហុស​បាន</Text>
         </View>
       </KeyboardAvoidingView>
@@ -546,12 +657,17 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 14, fontStyle: 'italic' },
 
   // Input
-  inputArea: { paddingHorizontal: 12, paddingTop: 10, borderTopWidth: 1 },
+  inputArea: { paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1 },
   inputRow: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
-    borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'flex-end',
+    borderRadius: 24, paddingHorizontal: 6, paddingVertical: 4, minHeight: 48,
   },
-  textInput: { flex: 1, fontSize: 15, lineHeight: 22, maxHeight: 120, paddingVertical: 2 },
-  sendBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  recordingBtn: { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
+  textInput: { flex: 1, fontSize: 16, maxHeight: 100, paddingHorizontal: 8, paddingVertical: 8 },
+  sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  imagePreview: { marginBottom: 8, position: 'relative', alignSelf: 'flex-start' },
+  previewImage: { width: 80, height: 80, borderRadius: 12 },
+  removeImageBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 11 },
   disclaimer: { fontSize: 11, textAlign: 'center', marginTop: 6, marginBottom: 2 },
 });
