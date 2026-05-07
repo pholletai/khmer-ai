@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const cors = require("cors");
 const path = require("path");
 const facebookLogin = require("./src/auth/facebookLogin.js");
 const { sendTextMessage } = require("./sendTextMessage.js");
@@ -21,6 +22,7 @@ const {
 } = require("./src/ai/salesStage");
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 // =========================
@@ -292,7 +294,7 @@ app.post("/webhook", async (req, res) => {
           stage,
         });
 
-        addHistory(senderId, "user", text || "[non-text message]");
+      addHistory(senderId, "user", text || "[non-text message]");
 
         const memoryContext = getUserMemory(senderId);
         const history = getHistory(senderId)
@@ -300,15 +302,15 @@ app.post("/webhook", async (req, res) => {
           .join("\n");
 
         const extraContext = `
-stage: ${memoryContext.stage}
-name: ${memoryContext.name || "មិនទាន់ស្គាល់"}
-interest: ${memoryContext.interest || "មិនទាន់ដឹង"}
-budget: ${memoryContext.budget || "មិនទាន់ដឹង"}
-notes: ${memoryContext.notes || "មិនទាន់មាន"}
+         stage: ${memoryContext.stage}
+         name: ${memoryContext.name || "មិនទាន់ស្គាល់"}
+         interest: ${memoryContext.interest || "មិនទាន់ដឹង"}
+         budget: ${memoryContext.budget || "មិនទាន់ដឹង"}
+         notes: ${memoryContext.notes || "មិនទាន់មាន"}
 
-recent history:
-${history}
-        `.trim();
+         recent history:
+        ${history}
+         `.trim();
 
         let finalUserMessage = text;
 

@@ -3,3 +3,8 @@ database-backup.json
 database.json
 database.sqlite
 node_modules/
+cloudflared.exe
+.expo/
+android/
+ios/
+expo-env.d.ts
