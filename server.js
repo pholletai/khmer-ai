@@ -126,7 +126,7 @@ app.use("/", facebookLogin);
 // Landing page
 // =========================
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.send("✅ Khmer AI Server is running");
 });
 
 // =========================
