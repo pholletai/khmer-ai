@@ -60,73 +60,120 @@ app.post("/chat", async (req, res) => {
 // API: POST /voice
 // body: { audioUrl }
 // =========================
+// =========================
+// API: POST /voice
+// body: { audioUrl, audioBase64, senderId }
+// =========================
 app.post("/voice", async (req, res) => {
-  try {
-    const { audioUrl, audioBase64, message, senderId } = req.body;
+try {
+const { audioUrl, audioBase64, senderId } = req.body;
+if (!audioUrl && !audioBase64) {
+  return res.status(400).json({
+    ok: false,
+    error: "audioUrl or audioBase64 is required",
+  });
+}
 
-    if (!audioUrl && !audioBase64) {
-      return res.status(400).json({
-        ok: false,
-        error: "audioUrl or audioBase64 is required",
-      });
+let text = "";
+
+// ========================= 
+// Step 1: Transcribe audio → text
+// =========================
+if (audioUrl) {
+  // Download from URL
+  const audioRes = await fetch(audioUrl);
+  const audioBuffer = await audioRes.buffer();
+
+  const FormData = require("form-data");
+  const formData = new FormData();
+  formData.append("file", audioBuffer, {
+    filename: "voice.m4a",
+    contentType: "audio/m4a",
+  });
+  formData.append("model", "whisper-large-v3");
+
+  const groqRes = await fetch(
+    "https://api.groq.com/openai/v1/audio/transcriptions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        ...formData.getHeaders(),
+      },
+      body: formData,
     }
+  );
+  const groqData = await groqRes.json();
+  text = groqData.text?.trim() || "";
 
-    let text = "";
+} else if (audioBase64) {
+  // From base64 (mobile app)
+  const cleanBase64 = audioBase64.includes(",")
+    ? audioBase64.split(",")[1]
+    : audioBase64;
 
-    if (audioUrl) {
-      text = await readVoiceFromUrl(audioUrl);
-    } else {
-      const cleanBase64 = audioBase64.includes(",")
-        ? audioBase64.split(",")[1]
-        : audioBase64;
+  const audioBuffer = Buffer.from(cleanBase64, "base64");
 
-      const audioBuffer = Buffer.from(cleanBase64, "base64");
+  const FormData = require("form-data");
+  const formData = new FormData();
+  formData.append("file", audioBuffer, {
+    filename: "voice.m4a",
+    contentType: "audio/m4a",
+  });
+  formData.append("model", "whisper-large-v3");
 
-      const formData = new FormData();
-      const audioBlob = new Blob([audioBuffer], { type: "audio/m4a" });
-
-      formData.append("file", audioBlob, "voice.m4a");
-      formData.append("model", "whisper-1");
-
-      const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: formData,
-      });
-
-      const whisperData = await whisperRes.json();
-
-      if (!whisperRes.ok) {
-        console.error("Whisper error:", whisperData);
-        throw new Error("voice transcription failed");
-      }
-
-      text = whisperData.text || "";
+  const groqRes = await fetch(
+    "https://api.groq.com/openai/v1/audio/transcriptions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        ...formData.getHeaders(),
+      },
+      body: formData,
     }
+  );
+  const groqData = await groqRes.json();
+  text = groqData.text?.trim() || "";
+}
 
-    const userId = senderId || "app-voice-user";
-    const reply = await askAI(userId, message ? `${message}\n\nVoice text: ${text}` : text);
+if (!text) {
+  return res.json({
+    ok: true,
+    text: "",
+    reply: "ខ្ញុំមិនអាចស្ដាប់សំឡេងបានច្បាស់ទេ។ សូមព្យាយាមម្ដងទៀត 🙏",
+  });
+}
 
-    return res.json({
-      ok: true,
-      text,
-      reply,
-    });
-  } catch (error) {
-    console.error("POST /voice error:", error.response?.data || error.message);
+console.log("📝 Transcribed text:", text);
 
-    return res.status(500).json({
-      ok: false,
-      error: "voice failed",
-    });
+// =========================
+// Step 2: Send transcribed text to Claude AI
+// =========================
+const userId = senderId || "voice-user";
+const voicePrompt = `[Voice message transcribed: "${text}"]\n\nសូមឆ្លើយជាភាសាខ្មែរ`;
+const reply = await askAI(userId, voicePrompt);
+
+// =========================
+// Step 3: Return both text + reply
+// =========================
+return res.json({
+  ok: true,
+  text,    // transcribed text
+  reply,   // AI reply ← frontend ប្រើ data.reply
+});
+
+} catch (error) {
+  console.error("POST /voice error:", error.response?.data || error.message);
+  return res.status(500).json({
+     ok: false,
+     error: "voice failed",
+     reply: "ขออภัยครับ មានបញ្ហាក្នុងការដំណើរការសំឡេង 🙏",
+   });
   }
 });
 
-// =========================
 // API: POST /image
-// body: { imageUrl }
 // =========================
 app.post("/image", async (req, res) => {
   try {
