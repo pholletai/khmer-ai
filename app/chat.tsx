@@ -1,673 +1,632 @@
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { askAI } from '@/services/ai';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  useWindowDimensions,
+    ActivityIndicator,
+    Animated,
+    FlatList,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// THEME
+// ─────────────────────────────────────────────
+const T = {
+  bgDeep:      '#0a0a0f',
+  bgCard:      '#12121a',
+  bgCardHover: '#1a1a28',
+  bgInput:     '#0f0f18',
+  accent:      '#6366f1',
+  accentLight: '#818cf8',
+  accentWarm:  '#f59e0b',
+  textPrimary: '#e8e8f0',
+  textSec:     '#8888a0',
+  textDim:     '#55556a',
+  border:      'rgba(255,255,255,0.07)',
+  borderStrong:'rgba(255,255,255,0.12)',
+  userBubble:  '#6366f1',
+  aiBubble:    '#16161f',
+  green:       '#22c55e',
+  red:         '#ef4444',
+};
+
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
+type ModeKey = 'chat' | 'content' | 'idea' | 'prompt';
+
 interface Message {
   id: string;
+  role: 'user' | 'assistant';
   text: string;
-  role: 'user' | 'ai';
-  image?: string;
+  time: string;
+  images?: string[];
 }
 
-interface ChatSession {
-  id: string;
-  title: string;
-  messages: Message[];
-  updatedAt: number;
-}
-
-// ─── Storage (web: localStorage, native: in-memory) ──────────────────────────
-const mem: Record<string, string> = {};
-const store = {
-  get: (k: string): string | null => {
-    if (Platform.OS === 'web') { try { return localStorage.getItem(k); } catch {} }
-    return mem[k] ?? null;
+// ─────────────────────────────────────────────
+// MODE CONFIG
+// ─────────────────────────────────────────────
+const MODES: Record<ModeKey, { emoji: string; label: string; labelKm: string; desc: string; system: string }> = {
+  chat: {
+    emoji: '💬', label: 'Chat', labelKm: 'Chat & ឆ្លើយសារ',
+    desc: 'ជួយ chat និងឆ្លើយសារ',
+    system: 'អ្នកជា Khmer AI Assistant ដ៏ឆ្លាតវៃ។ ឆ្លើយតបជាភាសាខ្មែរ ដោយរួសរាយ ច្បាស់លាស់ និងជួយដោះស្រាយ។ ប្រើ emoji សមរម្យ។',
   },
-  set: (k: string, v: string): void => {
-    if (Platform.OS === 'web') { try { localStorage.setItem(k, v); } catch {} }
-    mem[k] = v;
+  content: {
+    emoji: '✍️', label: 'Content', labelKm: 'Content & Caption',
+    desc: 'សរសេរ content និង caption',
+    system: 'អ្នកជា Khmer Content Writer ជំនាញ។ ជួយសរសេរ content ប្រកបដោយភាពច្នៃប្រឌិត caption ទាក់ទាញ post ល្អ និង copy ដ៏មានឥទ្ធិពលសម្រាប់ social media ជាភាសាខ្មែរ។',
+  },
+  idea: {
+    emoji: '🧠', label: 'Idea', labelKm: 'Idea & យុទ្ធសាស្ត្រ',
+    desc: 'ជួយគិត idea និងផែនការ',
+    system: 'អ្នកជា Strategic Advisor ជំនាញ។ ជួយគិត idea ថ្មី រៀបចំយុទ្ធសាស្ត្រ ដោះស្រាយបញ្ហា និង brainstorm ដំណោះស្រាយ។ ឆ្លើយជាភាសាខ្មែរ ដោយ structured ច្បាស់ actionable។',
+  },
+  prompt: {
+    emoji: '⚙️', label: 'Prompt', labelKm: 'Prompt & Workflow',
+    desc: 'រៀបចំ prompt និង workflow',
+    system: 'អ្នកជា Prompt Engineer និង Workflow Specialist ជំនាញ។ ជួយរៀបចំ prompt ប្រសិទ្ធភាព workflow ច្បាស់ SOP template និង automation strategy។ ឆ្លើយជាភាសាខ្មែរ structured ហើយ prompt copy-paste ready។',
   },
 };
-const HISTORY_KEY = 'khmer_ai_history';
 
-// ─── Quick prompts ────────────────────────────────────────────────────────────
-const QUICK_PROMPTS = [
-  { icon: '✍️', text: 'សរសេរ Caption' },
-  { icon: '🌐', text: 'បកប្រែភាសា' },
-  { icon: '💻', text: 'សរសេរ Code' },
-  { icon: '🖼️', text: 'បង្កើតរូបភាព' },
-  { icon: '🛒', text: 'សរសេរឆ្លើយលក់' },
-  { icon: '📢', text: 'សរសេរ Ads' },
-  { icon: '🧠', text: 'សង្ខេបអត្ថបទ' },
-  { icon: '📩', text: 'សរសេរ Email' },
-  { icon: '🎯', text: 'គំនិត Marketing' },
-  { icon: '💬', text: 'ឆ្លើយ Comment' },
+const STARTERS: Record<ModeKey, string> = {
+  chat:    'ជំរាបសួរ! ខ្ញុំត្រូវការជំនួយ 💬',
+  content: 'ខ្ញុំត្រូវការជំនួយ content ✍️',
+  idea:    'ជួយខ្ញុំគិត idea ថ្មី 🧠',
+  prompt:  'ជួយខ្ញុំរៀបចំ prompt ⚙️',
+};
 
-  // Extra options — អាចប្រើសម្រាប់ version expand ឬ category ផ្សេងៗ
-  { icon: '🤖', text: 'សរសេរ Chatbot Script' },
-  { icon: '📊', text: 'វិភាគទិន្នន័យ' },
-  { icon: '🤝', text: 'Follow Up អតិថិជន' },
-  { icon: '📋', text: 'សរសេរ Proposal' },
-  { icon: '🎬', text: 'Script វីដេអូ' },
-  { icon: '🔑', text: 'Keywords SEO' },
-];
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+const getTime = () =>
+  new Date().toLocaleTimeString('km-KH', { hour: '2-digit', minute: '2-digit' });
 
+const genId = () => Math.random().toString(36).slice(2, 9);
 
-// ─── Colors ───────────────────────────────────────────────────────────────────
-const C = {
-  light: {
-    bg: '#FFFFFF', sidebar: '#F9F9F9', border: '#E5E7EB',
-    text: '#0D0D0D', muted: '#6B7280', placeholder: '#9CA3AF',
-    inputBg: '#F3F4F6', inputBorder: '#D1D5DB',
-    userBubble: '#F3F4F6', userText: '#0D0D0D', aiText: '#0D0D0D',
-    cardBg: '#F9FAFB', cardBorder: '#E5E7EB',
-    activeSession: '#EBF3FF', primary: '#1877F2',
-    overlay: 'rgba(0,0,0,0.35)',
-  },
-  dark: {
-    bg: '#212121', sidebar: '#171717', border: '#2F2F2F',
-    text: '#ECECEC', muted: '#8E8EA0', placeholder: '#6B7280',
-    inputBg: '#2F2F2F', inputBorder: '#3F3F3F',
-    userBubble: '#2F2F2F', userText: '#ECECEC', aiText: '#ECECEC',
-    cardBg: '#2A2A2A', cardBorder: '#3A3A3A',
-    activeSession: '#1E3A5F', primary: '#3B9EFF',
-    overlay: 'rgba(0,0,0,0.65)',
-  },
-} as const;
+// ─────────────────────────────────────────────
+// TYPING DOTS
+// ─────────────────────────────────────────────
+function TypingDots() {
+  const anims = [useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current];
 
-const SIDEBAR_W = 260;
-// ដាក់នៅចន្លោះបន្ទាត់ 95-97 (មុន start function ChatScreen)
-interface PromptProps {
-  icon: string;
-  text: string;
-  col: any; // ឬដាក់ឱ្យចំតាម Type ពណ៌របស់ប្អូន
-  onPress: () => void;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.stagger(200, anims.map(a =>
+        Animated.sequence([
+          Animated.timing(a, { toValue: -6, duration: 300, useNativeDriver: true }),
+          Animated.timing(a, { toValue: 0,  duration: 300, useNativeDriver: true }),
+        ])
+      ))
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  return (
+    <View style={styles.typingRow}>
+      <View style={[styles.avatar, styles.avatarAI]}>
+        <Text style={{ fontSize: 13 }}>✦</Text>
+      </View>
+      <View style={styles.typingBubble}>
+        {anims.map((a, i) => (
+          <Animated.View key={i} style={[styles.typingDot, { transform: [{ translateY: a }] }]} />
+        ))}
+      </View>
+    </View>
+  );
 }
 
-const PromptChip = ({ icon, text, col, onPress }: PromptProps) => (
-  <TouchableOpacity 
-    onPress={onPress}
-    activeOpacity={0.7}
-    style={{
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: col.cardBg,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: col.cardBorder,
-      margin: 4,
-    }}>
-    <Text style={{ fontSize: 16, marginRight: 6 }}>{icon}</Text>
-    <Text style={{ color: col.text, fontSize: 13 }}>{text}</Text>
-  </TouchableOpacity>
-);
-// ─── Component ────────────────────────────────────────────────────────────────
-export default function ChatScreen() {
-  const router = useRouter();
-  const { width } = useWindowDimensions();
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
-  const col = isDark ? C.dark : C.light;
-  const insets = useSafeAreaInsets();
-  const isWide = width >= 768;
-
-  // Sidebar
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const slideX = useRef(new Animated.Value(-SIDEBAR_W)).current;
-
-  // Data
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [dots, setDots] = useState('');
-  const [search, setSearch] = useState('');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-
-  const scrollRef = useRef<ScrollView>(null);
-  const inputRef = useRef<TextInput>(null);
-
-  // Load history
-  useEffect(() => {
-    const raw = store.get(HISTORY_KEY);
-    if (raw) {
-      try {
-        const parsed: ChatSession[] = JSON.parse(raw);
-        setSessions(parsed);
-        if (parsed.length > 0) {
-          setActiveId(parsed[0].id);
-          setMessages(parsed[0].messages);
-        }
-      } catch {}
-    }
-  }, []);
-
-  // Loading dots animation
-  useEffect(() => {
-    if (!loading) { setDots(''); return; }
-    const t = setInterval(() => setDots(d => d.length >= 3 ? '' : d + '.'), 450);
-    return () => clearInterval(t);
-  }, [loading]);
-
-  // Sidebar animation
-  const openSidebar = useCallback(() => {
-    setSidebarOpen(true);
-    Animated.spring(slideX, { toValue: 0, useNativeDriver: true, tension: 120, friction: 18 }).start();
-  }, [slideX]);
-
-  const closeSidebar = useCallback(() => {
-    Animated.spring(slideX, { toValue: -SIDEBAR_W, useNativeDriver: true, tension: 120, friction: 18 }).start(
-      () => setSidebarOpen(false)
-    );
-  }, [slideX]);
-
-  // Persist
-  const persist = useCallback((s: ChatSession[]) => {
-    store.set(HISTORY_KEY, JSON.stringify(s));
-  }, []);
-
-  // New chat
-  const newChat = useCallback(() => {
-    const id = `${Date.now()}`;
-    const session: ChatSession = { id, title: 'Chat ថ្មី', messages: [], updatedAt: Date.now() };
-    const next = [session, ...sessions];
-    setSessions(next);
-    setActiveId(id);
-    setMessages([]);
-    persist(next);
-    if (!isWide) closeSidebar();
-    setTimeout(() => inputRef.current?.focus(), 300);
-  }, [sessions, persist, isWide, closeSidebar]);
-
-  // Select session
-  const selectSession = useCallback((id: string) => {
-    const s = sessions.find(x => x.id === id);
-    if (s) { setActiveId(id); setMessages(s.messages); }
-    if (!isWide) closeSidebar();
-  }, [sessions, isWide, closeSidebar]);
-
-  // Send
-  const send = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || loading) return;
-    setInput('');
-
-    // Ensure we have a session
-    let sid = activeId;
-    let curSessions = sessions;
-    if (!sid) {
-      const id = `${Date.now()}`;
-      const session: ChatSession = { id, title: trimmed.slice(0, 30), messages: [], updatedAt: Date.now() };
-      curSessions = [session, ...sessions];
-      setSessions(curSessions);
-      setActiveId(id);
-      sid = id;
-    }
-
-    const userMsg: Message = { id: `u${Date.now()}`, text: trimmed, role: 'user' };
-    const withUser = [...messages, userMsg];
-    setMessages(withUser);
-    setLoading(true);
-
-    const s1 = curSessions.map(s =>
-      s.id === sid
-        ? { ...s, messages: withUser, title: s.messages.length === 0 ? trimmed.slice(0, 30) : s.title, updatedAt: Date.now() }
-        : s
-    );
-    setSessions(s1);
-    persist(s1);
-
-    try {
-      const reply = await askAI('web-user', trimmed);
-      const aiMsg: Message = { id: `a${Date.now()}`, text: reply, role: 'ai' };
-      const withAi = [...withUser, aiMsg];
-      setMessages(withAi);
-      const s2 = s1.map(s => s.id === sid ? { ...s, messages: withAi, updatedAt: Date.now() } : s);
-      setSessions(s2);
-      persist(s2);
-    } catch (err: any) {
-      const errMsg: Message = { id: `e${Date.now()}`, text: `⚠️ ${err.message || 'មានបញ្ហា'}`, role: 'ai' };
-      const withErr = [...withUser, errMsg];
-      setMessages(withErr);
-      const s2 = s1.map(s => s.id === sid ? { ...s, messages: withErr } : s);
-      setSessions(s2);
-      persist(s2);
-    } finally {
-      setLoading(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-    }
-  }, [activeId, sessions, messages, loading, persist]);
-
-  const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) { alert('ត្រូវការសិទ្ធិចូលប្រើរូបភាព'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) {
-      setSelectedImage(result.assets[0].uri);
-      sendImageMessage(result.assets[0].uri);
-    }
-  };
-
-  const takePhoto = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) { alert('ត្រូវការសិទ្ធិចូលប្រើកាមេរ៉ា'); return; }
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
-    if (!result.canceled && result.assets[0]) {
-      setSelectedImage(result.assets[0].uri);
-      sendImageMessage(result.assets[0].uri);
-    }
-  };
-
-  const sendImageMessage = (imageUri: string) => {
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: '📷 បានផ្ញើរូបភាព', image: imageUri };
-    setMessages((prev) => [...prev, userMsg]);
-    setSelectedImage(null);
-  };
-
-  const toggleVoice = () => {
-    setIsRecording((prev) => !prev);
-  };
-
-  useEffect(() => {
-    if (messages.length > 0) setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-  }, [messages.length]);
-
-  const filtered = sessions.filter(s => s.title.toLowerCase().includes(search.toLowerCase()));
-
-  // ─── Sidebar content (shared between desktop/mobile) ─────────────────────
-  const sidebarContent = (
-    <View style={[styles.sidebar, { backgroundColor: col.sidebar, borderRightColor: col.border, paddingTop: insets.top }]}>
-      {/* Logo */}
-      <View style={styles.logoRow}>
-        <View style={[styles.logoIconWrap, { backgroundColor: col.primary }]}>
-          <Text style={styles.logoEmoji}>🤖</Text>
+// ─────────────────────────────────────────────
+// MESSAGE BUBBLE
+// ─────────────────────────────────────────────
+function MessageBubble({ msg }: { msg: Message }) {
+  const isUser = msg.role === 'user';
+  return (
+    <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
+      {!isUser && (
+        <View style={[styles.avatar, styles.avatarAI]}>
+          <Text style={{ fontSize: 13 }}>✦</Text>
         </View>
-        <Text style={[styles.logoText, { color: col.text }]}>Khmer AI</Text>
-        {!isWide && (
-          <TouchableOpacity onPress={closeSidebar} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="close" size={20} color={col.muted} />
-          </TouchableOpacity>
+      )}
+      <View style={{ maxWidth: '75%' }}>
+        {msg.images && msg.images.length > 0 && (
+          <View style={styles.imgRow}>
+            {msg.images.map((src, i) => (
+              <Image key={i} source={{ uri: src }} style={styles.msgImage} />
+            ))}
+          </View>
         )}
+        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
+          <Text style={[styles.bubbleText, isUser && { color: '#fff' }]}>{msg.text}</Text>
+        </View>
+        <Text style={[styles.bubbleTime, isUser && { textAlign: 'right' }]}>{msg.time}</Text>
       </View>
+      {isUser && (
+        <View style={[styles.avatar, styles.avatarUser]}>
+          <Ionicons name="person" size={14} color={T.accentLight} />
+        </View>
+      )}
+    </View>
+  );
+}
 
-      {/* New Chat */}
-      <TouchableOpacity style={[styles.newChatBtn, { borderColor: col.border, backgroundColor: col.cardBg }]} onPress={newChat} activeOpacity={0.7}>
-        <Ionicons name="add" size={18} color={col.primary} />
-        <Text style={[styles.newChatLabel, { color: col.primary }]}>Chat ថ្មី</Text>
-      </TouchableOpacity>
-
-      {/* Search */}
-      <View style={[styles.searchWrap, { backgroundColor: col.inputBg, borderColor: col.border }]}>
-        <Ionicons name="search" size={14} color={col.muted} />
-        <TextInput
-          style={[styles.searchInput, { color: col.text }]}
-          placeholder="ស្វែងរក..."
-          placeholderTextColor={col.placeholder}
-          value={search}
-          onChangeText={setSearch}
-        />
+// ─────────────────────────────────────────────
+// WELCOME SCREEN
+// ─────────────────────────────────────────────
+function WelcomeScreen({ onPickMode }: { onPickMode: (m: ModeKey) => void }) {
+  return (
+    <View style={styles.welcome}>
+      <View style={styles.welcomeIcon}>
+        <Text style={{ fontSize: 28 }}>✦</Text>
       </View>
-
-      {/* History label */}
-      <Text style={[styles.sectionLabel, { color: col.muted }]}>ប្រវត្តិ Chat</Text>
-
-      {/* Sessions list */}
-      <ScrollView style={styles.sessionScroll} showsVerticalScrollIndicator={false}>
-        {filtered.length === 0 ? (
-          <Text style={[styles.emptyHint, { color: col.muted }]}>
-            {search ? 'រកមិនឃើញ' : 'មិនទាន់មាន Chat'}
-          </Text>
-        ) : filtered.map(s => (
-          <TouchableOpacity
-            key={s.id}
-            style={[styles.sessionItem, activeId === s.id && { backgroundColor: col.activeSession }]}
-            onPress={() => selectSession(s.id)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={14} color={col.muted} style={styles.sessionIcon} />
-            <Text style={[styles.sessionTitle, { color: col.text }]} numberOfLines={1}>{s.title}</Text>
+      <Text style={styles.welcomeTitle}>Khmer AI Chat</Text>
+      <Text style={styles.welcomeSub}>ជ្រើសរើសប្រភេទជំនួយ ឬវាយសំណួររបស់អ្នក</Text>
+      <View style={styles.modeGrid}>
+        {(Object.keys(MODES) as ModeKey[]).map(k => (
+          <TouchableOpacity key={k} style={styles.modeCard} onPress={() => onPickMode(k)} activeOpacity={0.7}>
+            <Text style={styles.modeEmoji}>{MODES[k].emoji}</Text>
+            <Text style={styles.modeCardLabel}>{MODES[k].labelKm}</Text>
+            <Text style={styles.modeCardDesc}>{MODES[k].desc}</Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
-
-      {/* Bottom */}
-      <View style={[styles.sidebarBottom, { borderTopColor: col.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
-        <TouchableOpacity style={styles.upgradeBtn} onPress={() => router.push('/package')} activeOpacity={0.85}>
-          <Ionicons name="flash" size={15} color="#fff" />
-          <Text style={styles.upgradeBtnText}>Upgrade Plan</Text>
-        </TouchableOpacity>
-        <View style={styles.profileRow}>
-          <View style={[styles.avatarCircle, { backgroundColor: col.primary }]}>
-            <Text style={styles.avatarLetter}>K</Text>
-          </View>
-          <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: col.text }]}>Khmer User</Text>
-            <Text style={[styles.profilePlan, { color: col.muted }]}>Free Plan</Text>
-          </View>
-          <Ionicons name="ellipsis-horizontal" size={16} color={col.muted} />
-        </View>
       </View>
-    </View>
-  );
-
-  // ─── Render ────────────────────────────────────────────────────────────────
-  return (
-    <View style={[styles.root, { backgroundColor: col.bg }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={col.bg} />
-
-      {/* Desktop sidebar (permanent column) */}
-      {isWide && sidebarContent}
-
-      {/* Mobile sidebar (absolute drawer) */}
-      {!isWide && (
-        <>
-          {sidebarOpen && (
-            <Pressable
-              style={[StyleSheet.absoluteFill, { backgroundColor: col.overlay, zIndex: 50 }]}
-              onPress={closeSidebar}
-            />
-          )}
-          {sidebarOpen && (
-            <Animated.View
-              style={[
-                styles.mobileSidebar,
-                { transform: [{ translateX: slideX }], zIndex: 100 },
-              ]}
-            >
-              {sidebarContent}
-            </Animated.View>
-          )}
-        </>
-      )}
-
-      {/* Main area */}
-      <KeyboardAvoidingView
-        style={styles.main}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
-      >
-        {/* Top bar */}
-        <View style={[styles.topBar, { backgroundColor: col.bg, borderBottomColor: col.border, paddingTop: insets.top }]}>
-          <TouchableOpacity onPress={openSidebar} style={styles.menuBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            {isWide
-              ? <Ionicons name="chevron-forward" size={22} color={col.muted} />
-              : <Ionicons name="menu" size={24} color={col.text} />}
-          </TouchableOpacity>
-          <Text style={[styles.topBarTitle, { color: col.text }]} numberOfLines={1}>
-            {activeId ? (sessions.find(s => s.id === activeId)?.title ?? 'Khmer AI') : 'Khmer AI'}
-          </Text>
-          <TouchableOpacity onPress={newChat} style={styles.menuBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="create-outline" size={22} color={col.text} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Messages or welcome */}
-        {messages.length === 0 ? (
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={styles.welcomeWrap}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.welcomeInner}>
-              <View style={[styles.welcomeIconBg, { backgroundColor: isDark ? '#1E3A5F' : '#EBF3FF' }]}>
-                <Text style={styles.welcomeIconEmoji}>🤖</Text>
-              </View>
-              <Text style={[styles.welcomeTitle, { color: col.text }]}>ថ្ងៃនេះបងចង់ធ្វើអ្វី?</Text>
-              <Text style={[styles.welcomeSub, { color: col.muted }]}>Khmer AI ជួយអ្នកបានគ្រប់បែបយ៉ាង</Text>
-              <View style={styles.promptGrid}>
-              <View style={{ 
-                flexDirection: 'row', 
-                flexWrap: 'wrap', 
-                justifyContent: 'center', 
-                padding: 8 
-              }}>
-               {QUICK_PROMPTS.map((item, index) => (
-                <PromptChip 
-                 key={index}
-                 icon={item.icon}
-                 text={item.text}
-                 col={col}
-                 onPress={() => send(item.text)}
-                />
-              ))}
-              </View>   
-    
-              </View>
-            </View>
-          </ScrollView>
-        ) : (
-          <ScrollView
-            ref={scrollRef}
-            style={{ flex: 1 }}
-            contentContainerStyle={styles.msgList}
-            keyboardShouldPersistTaps="handled"
-            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-          >
-            {messages.map(msg => (
-              <View key={msg.id} style={[styles.msgRow, msg.role === 'user' ? styles.msgRowUser : styles.msgRowAi]}>
-                {msg.role === 'ai' && (
-                  <View style={[styles.aiAvatar, { backgroundColor: col.primary }]}>
-                    <Text style={styles.aiAvatarText}>K</Text>
-                  </View>
-                )}
-                <View
-                  style={[
-                    styles.bubble,
-                    msg.role === 'user'
-                      ? [styles.userBubble, { backgroundColor: col.userBubble }]
-                      : styles.aiBubble,
-                    { maxWidth: isWide ? '65%' : '82%' },
-                  ]}
-                >
-                  <Text style={[styles.bubbleText, { color: msg.role === 'user' ? col.userText : col.aiText }]}>
-                    {msg.text}
-                  </Text>
-                </View>
-              </View>
-            ))}
-
-            {loading && (
-              <View style={[styles.msgRow, styles.msgRowAi]}>
-                <View style={[styles.aiAvatar, { backgroundColor: col.primary }]}>
-                  <Text style={styles.aiAvatarText}>K</Text>
-                </View>
-                <View style={[styles.bubble, styles.aiBubble]}>
-                  <Text style={[styles.loadingText, { color: col.muted }]}>Khmer AI កំពុងគិត{dots}</Text>
-                </View>
-              </View>
-            )}
-          </ScrollView>
-        )}
-
-        {/* Input */}
-        <View style={[styles.inputArea, { backgroundColor: col.bg, borderTopColor: col.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
-
-          {selectedImage && (
-            <View style={styles.imagePreview}>
-              <Image source={{ uri: selectedImage }} style={styles.previewImage} />
-              <TouchableOpacity style={styles.removeImageBtn} onPress={() => setSelectedImage(null)}>
-                <Ionicons name="close-circle" size={22} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={[styles.inputRow, { backgroundColor: col.inputBg }]}>
-            <TouchableOpacity style={styles.iconBtn} onPress={pickImage}>
-              <Ionicons name="image-outline" size={24} color={col.placeholder} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.iconBtn} onPress={takePhoto}>
-              <Ionicons name="camera-outline" size={24} color={col.placeholder} />
-            </TouchableOpacity>
-
-            <TextInput
-              ref={inputRef}
-              style={[styles.textInput, { color: col.text }]}
-              placeholder="វាយសារ..."
-              placeholderTextColor={col.placeholder}
-              value={input}
-              onChangeText={setInput}
-              onSubmitEditing={() => send(input)}
-              returnKeyType="send"
-              multiline
-            />
-
-            {input.trim() ? (
-              <TouchableOpacity style={[styles.sendBtn, { backgroundColor: col.primary }]} onPress={() => send(input)}>
-                <Ionicons name="send" size={20} color="#fff" />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={[styles.iconBtn, isRecording && styles.recordingBtn]} onPress={toggleVoice}>
-                <Ionicons
-                  name={isRecording ? 'mic' : 'mic-outline'}
-                  size={24}
-                  color={isRecording ? '#ef4444' : col.placeholder}
-                />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <Text style={[styles.disclaimer, { color: col.muted }]}>Khmer AI អាចធ្វើ​ឱ្យ​មាន​កំ​ហុស​បាន</Text>
-        </View>
-      </KeyboardAvoidingView>
     </View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// MAIN SCREEN
+// ─────────────────────────────────────────────
+export default function ChatScreen() {
+  const router = useRouter();
+  const [messages, setMessages]       = useState<Message[]>([]);
+  const [input, setInput]             = useState('');
+  const [mode, setMode]               = useState<ModeKey>('chat');
+  const [loading, setLoading]         = useState(false);
+  const [started, setStarted]         = useState(false);
+  const [images, setImages]           = useState<string[]>([]);
+  const [recording, setRecording]     = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const flatRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
+
+  const scrollToEnd = useCallback(() => {
+    setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
+  }, []);
+
+// — API CALL —
+const callAI = useCallback(async (userText: string, history: Message[]) => {
+  setLoading(true);
+
+  try {
+    const res = await fetch('https://khmerai.store/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        senderId: 'app-user',
+        message: userText,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.ok || !data.reply) {
+      throw new Error(data.error || 'AI មិនអាចឆ្លើយបាន');
+    }
+
+    const aiMsg: Message = {
+      id: genId(),
+      role: 'assistant',
+      text: data.reply,
+      time: getTime(),
+    };
+
+    setMessages(prev => [...prev, aiMsg]);
+    scrollToEnd();
+
+    return data.reply;
+  } catch (err) {
+    console.error('callAI error:', err);
+
+    const errMsg: Message = {
+      id: genId(),
+      role: 'assistant',
+      text: '⚠️ មិនអាចភ្ជាប់ AI បានទេ។ សូមពិនិត្យ connection។',
+      time: getTime(),
+    };
+
+    setMessages(prev => [...prev, errMsg]);
+    scrollToEnd();
+
+    return errMsg.text;
+  } finally {
+    setLoading(false);
+  }
+}, [scrollToEnd]); 
+  // ── SEND ──
+  const send = useCallback(async () => {
+    const text = input.trim();
+    if (!text && !images.length) return;
+    if (loading) return;
+
+    Keyboard.dismiss();
+    const displayText = text || '(រូបភាព)';
+    const userMsg: Message = {
+      id: genId(), role: 'user',
+      text: displayText, time: getTime(),
+      images: images.length ? [...images] : undefined,
+    };
+
+    setInput('');
+    setImages([]);
+
+    const newHistory = [...messages, userMsg];
+    setMessages(newHistory);
+    if (!started) setStarted(true);
+    scrollToEnd();
+
+    await callAI(displayText, newHistory);
+  }, [input, images, loading, messages, started, callAI, scrollToEnd]);
+
+  // ── PICK MODE ──
+  const pickMode = useCallback(async (m: ModeKey) => {
+    setMode(m);
+    setStarted(true);
+    const userMsg: Message = { id: genId(), role: 'user', text: STARTERS[m], time: getTime() };
+    const newHistory = [userMsg];
+    setMessages(newHistory);
+    scrollToEnd();
+    await callAI(STARTERS[m], newHistory);
+  }, [callAI, scrollToEnd]);
+
+  // ── SWITCH MODE (in-chat) ──
+  const switchMode = useCallback((m: ModeKey) => {
+    setMode(m);
+  }, []);
+
+  // ── IMAGE PICKER ──
+  const pickImage = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setImages(prev => [...prev, ...result.assets.map(a => a.uri)]);
+    }
+  }, []);
+
+  // ── VOICE ──
+  const toggleVoice = useCallback(async () => {
+    if (isRecording && recording) {
+      await recording.stopAndUnloadAsync();
+      setRecording(null);
+      setIsRecording(false);
+      if (!input) setInput('🎤 (voice message recorded)');
+    } else {
+      try {
+        await Audio.requestPermissionsAsync();
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const { recording: rec } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        setRecording(rec);
+        setIsRecording(true);
+      } catch {
+        // permission denied
+      }
+    }
+  }, [isRecording, recording, input]);
+
+  // ── RENDER ITEM ──
+  const renderItem = useCallback(({ item }: { item: Message }) => (
+    <MessageBubble msg={item} />
+  ), []);
+
+  const keyExtractor = useCallback((item: Message) => item.id, []);
+
+  // ─────────────────────────────────────────
+  return (
+    <SafeAreaView style={styles.root}>
+      {/* HEADER */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.headerBack} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={18} color={T.textSec} />
+        </TouchableOpacity>
+        <View style={styles.headerAvatar}>
+          <Text style={{ fontSize: 16 }}>✦</Text>
+        </View>
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerName}>Khmer AI Chat</Text>
+          <View style={styles.headerStatus}>
+            <View style={styles.statusDot} />
+            <Text style={styles.headerStatusText}>អនឡាញ · Claude AI</Text>
+          </View>
+        </View>
+        <View style={styles.modeBadge}>
+          <Text style={styles.modeBadgeText}>{MODES[mode].emoji} {MODES[mode].label}</Text>
+        </View>
+      </View>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        {/* MESSAGES */}
+        {!started ? (
+          <WelcomeScreen onPickMode={pickMode} />
+        ) : (
+          <FlatList
+            ref={flatRef}
+            data={messages}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={styles.msgList}
+            onContentSizeChange={scrollToEnd}
+            ListFooterComponent={loading ? <TypingDots /> : null}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+
+        {/* MODE BAR (visible after started) */}
+        {started && (
+          <ScrollView
+            horizontal showsHorizontalScrollIndicator={false}
+            style={styles.modeBar} contentContainerStyle={styles.modeBarContent}
+          >
+            {(Object.keys(MODES) as ModeKey[]).map(k => (
+              <TouchableOpacity
+                key={k}
+                style={[styles.modePill, mode === k && styles.modePillActive]}
+                onPress={() => switchMode(k)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modePillText, mode === k && styles.modePillTextActive]}>
+                  {MODES[k].emoji} {MODES[k].label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* IMAGE PREVIEW */}
+        {images.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewBar}>
+            {images.map((uri, i) => (
+              <View key={i} style={styles.previewWrap}>
+                <Image source={{ uri }} style={styles.previewThumb} />
+                <TouchableOpacity
+                  style={styles.removeImg}
+                  onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}
+                >
+                  <Ionicons name="close" size={10} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* INPUT BAR */}
+        <View style={styles.inputArea}>
+          <View style={styles.inputRow}>
+            <TouchableOpacity style={styles.actionBtn} onPress={pickImage}>
+              <Ionicons name="image-outline" size={20} color={T.textSec} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, isRecording && styles.actionBtnRec]}
+              onPress={toggleVoice}
+            >
+              <Ionicons
+                name={isRecording ? 'stop' : 'mic-outline'}
+                size={20}
+                color={isRecording ? T.red : T.textSec}
+              />
+            </TouchableOpacity>
+            <TextInput
+              ref={inputRef}
+              style={styles.inputBox}
+              value={input}
+              onChangeText={setInput}
+              placeholder="វាយសំណួររបស់អ្នក…"
+              placeholderTextColor={T.textDim}
+              multiline
+              maxLength={2000}
+              returnKeyType="default"
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, (loading || (!input.trim() && !images.length)) && styles.sendBtnDisabled]}
+              onPress={send}
+              disabled={loading || (!input.trim() && !images.length)}
+              activeOpacity={0.8}
+            >
+              {loading
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="send" size={18} color="#fff" />
+              }
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+// ─────────────────────────────────────────────
+// STYLES
+// ─────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, flexDirection: 'row' },
+  root: { flex: 1, backgroundColor: T.bgDeep },
 
-  // Sidebar
-  sidebar: {
-    width: SIDEBAR_W,
-    flexShrink: 0,
-    borderRightWidth: 1,
-    paddingHorizontal: 12,
-    flexDirection: 'column',
+  // ── Header ──
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: T.border,
+    backgroundColor: T.bgDeep,
   },
-  mobileSidebar: {
-    position: 'absolute',
-    top: 0, left: 0, bottom: 0,
-    width: SIDEBAR_W,
+  headerBack: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: T.border,
+    alignItems: 'center', justifyContent: 'center',
   },
-  logoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 10 },
-  logoIconWrap: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  logoEmoji: { fontSize: 18 },
-  logoText: { fontSize: 17, fontWeight: '700', flex: 1 },
-  closeBtn: { padding: 4 },
-  newChatBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 10, paddingHorizontal: 12,
-    borderRadius: 10, borderWidth: 1, marginBottom: 10,
+  headerAvatar: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: '#6366f133',
+    borderWidth: 1, borderColor: '#6366f155',
+    alignItems: 'center', justifyContent: 'center',
   },
-  newChatLabel: { fontSize: 14, fontWeight: '600' },
-  searchWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 10, paddingVertical: 8,
-    borderRadius: 10, borderWidth: 1, marginBottom: 10,
+  headerInfo: { flex: 1 },
+  headerName: { fontSize: 15, fontWeight: '700', color: T.textPrimary },
+  headerStatus: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.green },
+  headerStatusText: { fontSize: 11, color: T.textDim },
+  modeBadge: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 100, borderWidth: 1, borderColor: T.border,
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
-  searchInput: { flex: 1, fontSize: 13, padding: 0 },
-  sectionLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6, marginLeft: 4 },
-  sessionScroll: { flex: 1 },
-  sessionItem: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 9, paddingHorizontal: 10,
-    borderRadius: 8, marginBottom: 2,
-  },
-  sessionIcon: { marginRight: 8, flexShrink: 0 },
-  sessionTitle: { fontSize: 13, flex: 1 },
-  emptyHint: { fontSize: 13, textAlign: 'center', marginTop: 20, paddingHorizontal: 8 },
-  sidebarBottom: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
-  upgradeBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    backgroundColor: '#1877F2', paddingVertical: 11, borderRadius: 10,
-  },
-  upgradeBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  profileRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
-  avatarCircle: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
-  avatarLetter: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  profileInfo: { flex: 1, marginLeft: 10 },
-  profileName: { fontSize: 13, fontWeight: '600' },
-  profilePlan: { fontSize: 11, marginTop: 1 },
+  modeBadgeText: { fontSize: 11, color: T.textSec },
 
-  // Top bar
-  main: { flex: 1 },
-  topBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 1, minHeight: 50,
+  // ── Messages ──
+  msgList: { padding: 16, gap: 6, paddingBottom: 8 },
+  msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginVertical: 3 },
+  msgRowUser: { flexDirection: 'row-reverse' },
+  avatar: {
+    width: 28, height: 28, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  menuBtn: { width: 38, height: 38, justifyContent: 'center', alignItems: 'center' },
-  topBarTitle: { flex: 1, fontSize: 15, fontWeight: '600', textAlign: 'center', marginHorizontal: 8 },
-
-  // Welcome
-  welcomeWrap: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  welcomeInner: { width: '100%', maxWidth: 520, alignItems: 'center' },
-  welcomeIconBg: { width: 72, height: 72, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginBottom: 18 },
-  welcomeIconEmoji: { fontSize: 38 },
-  welcomeTitle: { fontSize: 24, fontWeight: '700', textAlign: 'center', marginBottom: 8 },
-  welcomeSub: { fontSize: 15, textAlign: 'center', marginBottom: 32 },
-  promptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center', width: '100%' },
-  promptCard: {
-    width: '47%', padding: 14, borderRadius: 14, borderWidth: 1,
-    alignItems: 'flex-start', gap: 6,
+  avatarAI: { backgroundColor: '#6366f122', borderWidth: 1, borderColor: '#6366f133' },
+  avatarUser: { backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.25)' },
+  bubble: {
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 18, maxWidth: '100%',
   },
-  promptIcon: { fontSize: 22 },
-  promptText: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
-
-  // Messages
-  msgList: { padding: 16, gap: 8, paddingBottom: 24 },
-  msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 4 },
-  msgRowUser: { justifyContent: 'flex-end' },
-  msgRowAi: { justifyContent: 'flex-start' },
-  aiAvatar: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', flexShrink: 0, marginBottom: 2 },
-  aiAvatarText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
-  userBubble: { borderBottomRightRadius: 4 },
-  aiBubble: { borderBottomLeftRadius: 4 },
-  bubbleText: { fontSize: 15, lineHeight: 23 },
-  loadingText: { fontSize: 14, fontStyle: 'italic' },
-
-  // Input
-  inputArea: { paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1 },
-  inputRow: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    borderRadius: 24, paddingHorizontal: 6, paddingVertical: 4, minHeight: 48,
+  bubbleAI: {
+    backgroundColor: T.aiBubble,
+    borderWidth: 1, borderColor: T.border,
+    borderBottomLeftRadius: 4,
   },
-  iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  recordingBtn: { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
-  textInput: { flex: 1, fontSize: 16, maxHeight: 100, paddingHorizontal: 8, paddingVertical: 8 },
-  sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  imagePreview: { marginBottom: 8, position: 'relative', alignSelf: 'flex-start' },
-  previewImage: { width: 80, height: 80, borderRadius: 12 },
-  removeImageBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 11 },
-  disclaimer: { fontSize: 11, textAlign: 'center', marginTop: 6, marginBottom: 2 },
+  bubbleUser: {
+    backgroundColor: T.userBubble,
+    borderBottomRightRadius: 4,
+  },
+  bubbleText: { fontSize: 14, color: T.textPrimary, lineHeight: 22 },
+  bubbleTime: { fontSize: 10, color: T.textDim, marginTop: 4, fontVariant: ['tabular-nums'] },
+  imgRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap', marginBottom: 4, justifyContent: 'flex-end' },
+  msgImage: { width: 90, height: 90, borderRadius: 10 },
+
+  // ── Typing ──
+  typingRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginVertical: 3, paddingLeft: 16 },
+  typingBubble: {
+    flexDirection: 'row', gap: 4, alignItems: 'center',
+    backgroundColor: T.aiBubble,
+    borderWidth: 1, borderColor: T.border,
+    borderRadius: 18, borderBottomLeftRadius: 4,
+    paddingHorizontal: 14, paddingVertical: 14,
+  },
+  typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.textDim },
+
+  // ── Welcome ──
+  welcome: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  welcomeIcon: {
+    width: 64, height: 64, borderRadius: 20,
+    backgroundColor: '#6366f122', borderWidth: 1, borderColor: '#6366f144',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+  },
+  welcomeTitle: { fontSize: 20, fontWeight: '700', color: T.textPrimary, marginBottom: 6 },
+  welcomeSub: { fontSize: 13, color: T.textSec, textAlign: 'center', lineHeight: 20, maxWidth: 260 },
+  modeGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 10,
+    marginTop: 24, justifyContent: 'center',
+  },
+  modeCard: {
+    width: '46%',
+    backgroundColor: T.bgCard,
+    borderWidth: 1, borderColor: T.border,
+    borderRadius: 14, padding: 14, gap: 4,
+  },
+  modeEmoji: { fontSize: 22 },
+  modeCardLabel: { fontSize: 13, fontWeight: '600', color: T.textPrimary, lineHeight: 18 },
+  modeCardDesc: { fontSize: 11, color: T.textSec, lineHeight: 16 },
+
+  // ── Mode Bar ──
+  modeBar: { flexShrink: 0, borderTopWidth: 1, borderTopColor: T.border },
+  modeBarContent: { paddingHorizontal: 14, paddingVertical: 8, gap: 6 },
+  modePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 100, borderWidth: 1, borderColor: T.border,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  modePillActive: {
+    backgroundColor: 'rgba(99,102,241,0.15)',
+    borderColor: 'rgba(99,102,241,0.4)',
+  },
+  modePillText: { fontSize: 12, color: T.textSec },
+  modePillTextActive: { color: T.accentLight },
+
+  // ── Input Area ──
+  inputArea: {
+    paddingHorizontal: 14, paddingTop: 8, paddingBottom: 12,
+    borderTopWidth: 1, borderTopColor: T.border,
+    backgroundColor: T.bgDeep,
+  },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  actionBtn: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1, borderColor: T.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  actionBtnRec: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderColor: 'rgba(239,68,68,0.35)',
+  },
+  inputBox: {
+    flex: 1,
+    backgroundColor: T.bgInput,
+    borderWidth: 1, borderColor: T.border,
+    borderRadius: 14, paddingHorizontal: 14,
+    paddingTop: 10, paddingBottom: 10,
+    color: T.textPrimary, fontSize: 14,
+    maxHeight: 120, lineHeight: 20,
+  },
+  sendBtn: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: T.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sendBtnDisabled: { opacity: 0.4 },
+
+  // ── Image Preview ──
+  previewBar: { paddingHorizontal: 14, paddingBottom: 8, flexShrink: 0 },
+  previewWrap: { position: 'relative', marginRight: 8 },
+  previewThumb: { width: 56, height: 56, borderRadius: 10 },
+  removeImg: {
+    position: 'absolute', top: -4, right: -4,
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: T.red,
+    alignItems: 'center', justifyContent: 'center',
+  },
 });
