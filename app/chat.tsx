@@ -257,9 +257,9 @@ const callAI = useCallback(async (userText: string, history: Message[]) => {
     setLoading(false);
   }
 }, [scrollToEnd]); 
-  // ── SEND ──
-  const send = useCallback(async () => {
-    const text = input.trim();
+// ── SEND ──
+const send = useCallback(async () => {
+  const text = input.trim();
     if (!text && !images.length) return;
     if (loading) return;
 
@@ -282,10 +282,10 @@ const callAI = useCallback(async (userText: string, history: Message[]) => {
     await callAI(displayText, newHistory);
   }, [input, images, loading, messages, started, callAI, scrollToEnd]);
 
-  // ── PICK MODE ──
-  const pickMode = useCallback(async (m: ModeKey) => {
-    setMode(m);
-    setStarted(true);
+// ── PICK MODE ──
+const pickMode = useCallback(async (m: ModeKey) => {
+   setMode(m);
+   setStarted(true);
     const userMsg: Message = { id: genId(), role: 'user', text: STARTERS[m], time: getTime() };
     const newHistory = [userMsg];
     setMessages(newHistory);
@@ -293,13 +293,13 @@ const callAI = useCallback(async (userText: string, history: Message[]) => {
     await callAI(STARTERS[m], newHistory);
   }, [callAI, scrollToEnd]);
 
-  // ── SWITCH MODE (in-chat) ──
+// ── SWITCH MODE (in-chat) ──
   const switchMode = useCallback((m: ModeKey) => {
     setMode(m);
   }, []);
 
-  // ── IMAGE PICKER ──
-  const pickImage = useCallback(async () => {
+// ── IMAGE PICKER ──
+const pickImage = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') return;
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -311,29 +311,108 @@ const callAI = useCallback(async (userText: string, history: Message[]) => {
       setImages(prev => [...prev, ...result.assets.map(a => a.uri)]);
     }
   }, []);
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
 
-  // ── VOICE ──
-  const toggleVoice = useCallback(async () => {
-    if (isRecording && recording) {
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+};
+
+// — VOICE —
+const toggleVoice = useCallback(async () => {
+  if (isRecording && recording) {
+    try {
       await recording.stopAndUnloadAsync();
       setRecording(null);
       setIsRecording(false);
-      if (!input) setInput('🎤 (voice message recorded)');
-    } else {
-      try {
-        await Audio.requestPermissionsAsync();
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-        const { recording: rec } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-        setRecording(rec);
-        setIsRecording(true);
-      } catch {
-        // permission denied
-      }
-    }
-  }, [isRecording, recording, input]);
 
+      const uri = recording.getURI();
+
+      if (!uri) {
+        setInput('⚠️ មិនអាចយក voice file បានទេ');
+        return;
+      }
+
+      const userMsg: Message = {
+        id: genId(),
+        role: 'user',
+        text: '🎤 (voice message recorded)',
+        time: getTime(),
+      };
+
+      setMessages(prev => [...prev, userMsg]);
+      scrollToEnd();
+
+      const audioRes = await fetch(uri);
+      const audioBuffer = await audioRes.arrayBuffer();
+      const audioBase64 = arrayBufferToBase64(audioBuffer);
+
+      const res = await fetch('https://khmerai.store/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+         senderId: 'app-voice-user',
+         audioBase64,
+         message: 'ช่วยฟังเสียงนี้ แล้วตอบกลับเป็นภาษาเขมร', 
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'voice failed');
+      }
+
+      const aiMsg: Message = {
+        id: genId(),
+        role: 'assistant',
+        text: data.reply || data.text || 'សូមអភ័យទោស បង ខ្ញុំមិនទាន់អាចស្តាប់បានទេ 🙏',
+        time: getTime(),
+      };
+
+      setMessages(prev => [...prev, aiMsg]);
+      scrollToEnd();
+    } catch (err) {
+      console.error('voice app error:', err);
+
+      const errMsg: Message = {
+        id: genId(),
+        role: 'assistant',
+        text: '⚠️ Voice មានបញ្ហា សូមព្យាយាមម្តងទៀត 🙏',
+        time: getTime(),
+      };
+
+      setMessages(prev => [...prev, errMsg]);
+      scrollToEnd();
+    }
+
+    return;
+  }
+
+  try {
+    await Audio.requestPermissionsAsync();
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    });
+
+    const { recording: rec } = await Audio.Recording.createAsync(
+      Audio.RecordingOptionsPresets.HIGH_QUALITY
+    );
+
+    setRecording(rec);
+    setIsRecording(true);
+  } catch (err) {
+    console.error('start recording error:', err);
+  }
+}, [isRecording, recording]);
   // ── RENDER ITEM ──
   const renderItem = useCallback(({ item }: { item: Message }) => (
     <MessageBubble msg={item} />
