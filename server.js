@@ -62,23 +62,61 @@ app.post("/chat", async (req, res) => {
 // =========================
 app.post("/voice", async (req, res) => {
   try {
-    const { audioUrl } = req.body;
+    const { audioUrl, audioBase64, message, senderId } = req.body;
 
-    if (!audioUrl) {
+    if (!audioUrl && !audioBase64) {
       return res.status(400).json({
         ok: false,
-        error: "audioUrl is required",
+        error: "audioUrl or audioBase64 is required",
       });
     }
 
-    const text = await readVoiceFromUrl(audioUrl);
+    let text = "";
+
+    if (audioUrl) {
+      text = await readVoiceFromUrl(audioUrl);
+    } else {
+      const cleanBase64 = audioBase64.includes(",")
+        ? audioBase64.split(",")[1]
+        : audioBase64;
+
+      const audioBuffer = Buffer.from(cleanBase64, "base64");
+
+      const formData = new FormData();
+      const audioBlob = new Blob([audioBuffer], { type: "audio/m4a" });
+
+      formData.append("file", audioBlob, "voice.m4a");
+      formData.append("model", "whisper-1");
+
+      const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: formData,
+      });
+
+      const whisperData = await whisperRes.json();
+
+      if (!whisperRes.ok) {
+        console.error("Whisper error:", whisperData);
+        throw new Error("voice transcription failed");
+      }
+
+      text = whisperData.text || "";
+    }
+
+    const userId = senderId || "app-voice-user";
+    const reply = await askAI(userId, message ? `${message}\n\nVoice text: ${text}` : text);
 
     return res.json({
       ok: true,
       text,
+      reply,
     });
   } catch (error) {
     console.error("POST /voice error:", error.response?.data || error.message);
+
     return res.status(500).json({
       ok: false,
       error: "voice failed",
@@ -92,23 +130,36 @@ app.post("/voice", async (req, res) => {
 // =========================
 app.post("/image", async (req, res) => {
   try {
-    const { imageUrl } = req.body;
+    const { imageUrl, imageBase64, message } = req.body;
 
-    if (!imageUrl) {
+    if (!imageUrl && !imageBase64) {
       return res.status(400).json({
         ok: false,
-        error: "imageUrl is required",
+        error: "imageUrl or imageBase64 is required",
       });
     }
 
-    const result = await readImageFromUrl(imageUrl);
+    let result;
+
+    if (imageUrl) {
+      result = await readImageFromUrl(imageUrl);
+    } else {
+      const prompt = message || "សូមពិនិត្យរូបនេះ ហើយពន្យល់ជាភាសាខ្មែរ។";
+
+      result = await askAI(
+        "app-image-user",
+        `${prompt}\n\n[Image received as base64. Please respond in Khmer based on the user's image request.]`
+      );
+    }
 
     return res.json({
       ok: true,
       result,
+      reply: result,
     });
   } catch (error) {
     console.error("POST /image error:", error.response?.data || error.message);
+
     return res.status(500).json({
       ok: false,
       error: "image failed",
