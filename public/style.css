@@ -211,3 +211,16 @@
     border-radius: 4px;
 }
 .history-item button:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
+
+/* ===== HIDDEN BY DEFAULT (replace inline styles) ===== */
+#imagePreviewArea {
+    display: none;
+}
+
+.hidden-input {
+    display: none;
+}
+
+#voiceModal {
+    display: none;
+}

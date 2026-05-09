@@ -53,7 +53,7 @@
     </div>
 
     <!-- Image Preview Area -->
-    <div class="image-preview-area" id="imagePreviewArea" style="display:none;">
+    <div class="image-preview-area" id="imagePreviewArea"></div>
         <div class="image-preview-wrapper">
             <img id="imagePreview" src="" alt="preview">
             <button class="remove-image-btn" onclick="removeImage()">
@@ -69,7 +69,7 @@
             <button class="toolbar-btn" onclick="document.getElementById('imageInput').click()" title="ផ្ញើរូបភាព">
                 <i class="fas fa-image"></i>
             </button>
-            <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleImageSelect(event)">
+            <input type="file" id="imageInput" accept="image/*" class="hidden-input" onchange="handleImageSelect(event)" aria-label="Upload image">
 
             <!-- Voice Record Button -->
             <button class="toolbar-btn voice-btn" id="voiceBtn" onclick="toggleVoice()" title="ផ្ញើសំឡេង">
@@ -91,10 +91,10 @@
         </div>
         <p class="disclaimer">Khmer AI អាចមានការខុសឆ្គង សូមពិនិត្យព័ត៌មានសំខាន់ៗ</p>
     </div>
-</div>
+</div> 
 
 <!-- Voice Recording Modal -->
-<div class="voice-modal" id="voiceModal" style="display:none;">
+<div class="voice-modal" id="voiceModal">
     <div class="voice-modal-content">
         <div class="voice-animation" id="voiceAnimation">
             <div class="voice-circle"></div>

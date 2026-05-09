@@ -1,12 +1,14 @@
 /**
  * src/handlers/handleAudio.js — Khmer AI
+ * ✅ Support: Voice transcription + Image vision via AI
  */
+
 const { askAI } = require("../ai/claude");
 const { sendTextMessage } = require("../../sendTextMessage");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 
-// ✅ FIX #5 — Timeout helper
+// ✅ Timeout helper
 const fetchWithTimeout = (url, options, ms = 15000) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -15,7 +17,6 @@ const fetchWithTimeout = (url, options, ms = 15000) => {
 };
 
 async function handleAudio(senderId, audioUrl, pageId) {
-  // ✅ FIX #6 — Validate key first
   if (!process.env.GROQ_API_KEY) {
     console.error("❌ GROQ_API_KEY is not set");
     await sendTextMessage(pageId, senderId,
@@ -29,14 +30,13 @@ async function handleAudio(senderId, audioUrl, pageId) {
     const audioRes = await fetchWithTimeout(audioUrl, {}, 10000);
     if (!audioRes.ok) throw new Error("Download failed: " + audioRes.status);
 
-    // ✅ FIX #1 — arrayBuffer() instead of .buffer()
     const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
 
     const formData = new FormData();
     formData.append("file", audioBuffer, {
       filename: "voice.m4a",
-      contentType: "audio/m4a",           // ✅ FIX #4
-      knownLength: audioBuffer.length,    // ✅ FIX #3
+      contentType: "audio/m4a",
+      knownLength: audioBuffer.length,
     });
     formData.append("model", "whisper-large-v3");
     formData.append("language", "km");
@@ -47,7 +47,7 @@ async function handleAudio(senderId, audioUrl, pageId) {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          ...formData.getHeaders(), // ✅ FIX #2 — proper ... not …
+          ...formData.getHeaders(),
         },
         body: formData,
       },
@@ -55,9 +55,8 @@ async function handleAudio(senderId, audioUrl, pageId) {
     );
 
     const groqData = await groqRes.json();
-    if (!groqRes.ok) throw new Error("Transcription failed");
+    if (!groqRes.ok) throw new Error("Transcription failed: " + JSON.stringify(groqData));
 
-    // ✅ FIX #7 — safe null guard
     const transcribedText =
       groqData.text && typeof groqData.text === "string"
         ? groqData.text.trim()
@@ -71,7 +70,8 @@ async function handleAudio(senderId, audioUrl, pageId) {
       return;
     }
 
-    const voicePrompt = `[អ្នកប្រើបានផ្ញើ voice message: "${transcribedText}"]`;
+    // ✅ ផ្ញើទៅ AI ជា text (askAI handles conversation history)
+    const voicePrompt = `អ្នកប្រើបានផ្ញើ voice message: "${transcribedText}"`;
     const reply = await askAI(senderId, voicePrompt);
     await sendTextMessage(pageId, senderId, `🎤 "${transcribedText}"\n\n${reply}`);
 
@@ -79,7 +79,6 @@ async function handleAudio(senderId, audioUrl, pageId) {
     console.error("❌ handleAudio error:", error.message);
     try {
       await sendTextMessage(pageId, senderId,
-        // ✅ FIX #8 — Khmer only, no Thai
         "សូមអភ័យទោស! មានបញ្ហាក្នុងការដំណើរការសំឡេង។ សូមវាយអក្សរជំនួសវិញ 🙏");
     } catch (e) {
       console.error("❌ sendTextMessage failed:", e.message);
