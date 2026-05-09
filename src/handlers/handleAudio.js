@@ -6,7 +6,9 @@
 const { askAI } = require("../ai/claude");
 const { sendTextMessage } = require("../../sendTextMessage");
 const FormData = require("form-data");
-const fetch = require("node-fetch");
+
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 // ✅ Timeout helper
 const fetchWithTimeout = (url, options, ms = 15000) => {
