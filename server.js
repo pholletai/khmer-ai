@@ -14,6 +14,9 @@ const { getUserMemory, saveUserMemory, addHistory, getHistory } = require("./src
 const { detectStage, getHigherStage } = require("./src/ai/salesStage");
 
 const app = express();
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ extended: true }));
+
 app.use(cors({
   origin: [
     'https://khmerai.store',
