@@ -14,9 +14,16 @@ const { getUserMemory, saveUserMemory, addHistory, getHistory } = require("./src
 const { detectStage, getHigherStage } = require("./src/ai/salesStage");
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(cors({
+  origin: [
+    'https://khmerai.store',
+    'https://khmer-ai-app.onrender.com',
+    'http://localhost:8081',
+    'http://localhost:3000',
+    '*'
+  ],
+  credentials: falsa
+}));
 
 // =========================
 // Helper: Timeout fetch
