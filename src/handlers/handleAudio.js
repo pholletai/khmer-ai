@@ -5,6 +5,8 @@
 
 const { askAI } = require("../ai/claude");
 const { sendTextMessage } = require("../../sendTextMessage");
+const { sendVoiceMessage } = require("../sendVoiceMessage"); // ← បន្ថែមថ្មី
+const { textToSpeech } = require("../ai/textToSpeech");        // ← បន្ថែមថ្មី
 const FormData = require("form-data");
 
 const fetch = (...args) =>
@@ -75,11 +77,20 @@ async function handleAudio(senderId, audioUrl, pageId) {
     // ✅ ផ្ញើទៅ AI ជា text (askAI handles conversation history)
     const voicePrompt = `អតិថិជនបានផ្ញើ voice message: "${transcribedText}"`;
     const reply = await askAI(senderId, voicePrompt);
+  // Send text (transcript + reply)
     await sendTextMessage(
       pageId,
       senderId,
-      `🎙️ ខ្ញុំបានស្តាប់ឮថា៖ "${transcribedText}"\n\n${reply}`
+     `🎙 ខ្ចាបស្តាប់បួន: "${transcribedText}"\n\n${reply}`
     );
+
+  // ← បន្ថែម: Send voice response
+    try {
+      const audioBuffer = await textToSpeech(reply);
+      await sendVoiceMessage(pageId, senderId, audioBuffer);
+  } catch (ttsError) {
+    console.error("❌ TTS error:", ttsError.message);
+  }
 
   } catch (error) {
     console.error("❌ handleAudio error:", error.message);

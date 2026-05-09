@@ -77,7 +77,6 @@ async function transcribeAudio(audioBuffer) {
 
 // =========================
 // API: POST /chat
-// body: { senderId, message }
 // =========================
 app.post("/chat", async (req, res) => {
   try {
@@ -99,41 +98,30 @@ app.post("/chat", async (req, res) => {
 
 // =========================
 // API: POST /voice
-// body: { audioUrl?, audioBase64?, senderId? }
 // =========================
 app.post("/voice", async (req, res) => {
   try {
     const { audioUrl, audioBase64, senderId } = req.body;
 
     if (!audioUrl && !audioBase64) {
-      return res.status(400).json({
-        ok: false,
-        error: "audioUrl or audioBase64 is required",
-      });
+      return res.status(400).json({ ok: false, error: "audioUrl or audioBase64 is required" });
     }
 
     if (!process.env.GROQ_API_KEY) {
-      return res.status(500).json({
-        ok: false,
-        error: "GROQ_API_KEY មិនទាន់កំណត់",
-      });
+      return res.status(500).json({ ok: false, error: "GROQ_API_KEY មិនទាន់កំណត់" });
     }
 
-    // Step 1: Get audio buffer
     let audioBuffer;
 
     if (audioUrl) {
       const audioRes = await fetchWithTimeout(audioUrl, {}, 10000);
       if (!audioRes.ok) throw new Error("Audio download failed: " + audioRes.status);
-      audioBuffer = Buffer.from(await audioRes.arrayBuffer()); // ✅ arrayBuffer()
+      audioBuffer = Buffer.from(await audioRes.arrayBuffer());
     } else {
-      const cleanBase64 = audioBase64.includes(",")
-        ? audioBase64.split(",")[1]
-        : audioBase64;
+      const cleanBase64 = audioBase64.includes(",") ? audioBase64.split(",")[1] : audioBase64;
       audioBuffer = Buffer.from(cleanBase64, "base64");
     }
 
-    // Step 2: Transcribe
     const text = await transcribeAudio(audioBuffer);
 
     if (!text) {
@@ -146,8 +134,7 @@ app.post("/voice", async (req, res) => {
 
     console.log("📝 Transcribed:", text);
 
-    // Step 3: Send to Claude AI
-    const userId = senderId || "voice-user";
+    const userId = senderId || "app-voice-user";
     const voicePrompt = `អ្នកប្រើបានផ្ញើ voice message: "${text}"`;
     const reply = await askAI(userId, voicePrompt);
 
@@ -165,51 +152,38 @@ app.post("/voice", async (req, res) => {
 
 // =========================
 // API: POST /image
-// body: { imageUrl?, imageBase64?, message?, senderId? }
 // =========================
 app.post("/image", async (req, res) => {
   try {
     const { imageUrl, imageBase64, message, senderId } = req.body;
 
     if (!imageUrl && !imageBase64) {
-      return res.status(400).json({
-        ok: false,
-        error: "imageUrl or imageBase64 is required",
-      });
+      return res.status(400).json({ ok: false, error: "imageUrl or imageBase64 is required" });
     }
 
     const userId = senderId || "app-image-user";
     const userCaption = message || null;
-
     let base64Image;
     let mediaType = "image/jpeg";
 
     if (imageUrl) {
-      // Download image from URL
       const imgRes = await fetchWithTimeout(imageUrl, {}, 10000);
       if (!imgRes.ok) throw new Error("Image download failed: " + imgRes.status);
       const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
       base64Image = imgBuffer.toString("base64");
 
-      // Detect media type
       if (imageUrl.includes(".png")) mediaType = "image/png";
       else if (imageUrl.includes(".gif")) mediaType = "image/gif";
       else if (imageUrl.includes(".webp")) mediaType = "image/webp";
-
     } else {
-      // From base64
-      const cleanBase64 = imageBase64.includes(",")
-        ? imageBase64.split(",")[1]
-        : imageBase64;
+      const cleanBase64 = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
       base64Image = cleanBase64;
 
-      // Detect from data URI prefix
       if (imageBase64.startsWith("data:image/png")) mediaType = "image/png";
       else if (imageBase64.startsWith("data:image/gif")) mediaType = "image/gif";
       else if (imageBase64.startsWith("data:image/webp")) mediaType = "image/webp";
     }
 
-    // ✅ Call Claude Vision
     const result = await askAIWithImage(userId, base64Image, mediaType, userCaption);
 
     return res.json({ ok: true, result, reply: result });
@@ -287,7 +261,22 @@ function extractSimpleLeadInfo(text = "", userMemory = {}) {
 
 function buildSalesPrompt(userText, extraContext = "") {
   return `
-អ្នកគឺជា Khmer AI — ជំនួយការឆ្លាតវៃ ដូច ChatGPT អាចជួយគ្រប់យ៉ាង!
+អ្នកគឺជា Khmer AI — ជំនួយការឆ្លាតវៃ ដូច ChatGPT  ឬ Claude អាចជួយគ្រប់យ៉ាង!
+
+🎯 អ្នកអាច:
+• 📝 សរសេរ content, caption, email
+• 📚 រៀន & ពន្យល់គ្រប់មុខវិជ្ជា
+• 💻 សរសេរ / debug កូដ
+• 🌍 បកប្រែ Khmer ↔️ English ↔️ Thai
+• 🖼️ មើល វិភាគ និង ពណ៌នា រូបភាព
+• 🎤 ឆ្លើយ voice message
+• 💡 brainstorm & idea
+• 📊 វិភាគ & សង្ខេប
+
+✍️ ឆ្លើយ: ច្បាស់ · ខ្លី · មានប្រយោជន៍ · ប្រើ markdown នៅពេលសមរម្យ
+
+🖼️ រូបភាព: វិភាគ ពណ៌នា caption analyze ត្រឹមត្រូវ
+🎤 Voice: ឆ្លើយតាម transcript ដែលទទួលបាន
 
 តួនាទីរបស់អ្នក:
 1. ឆ្លើយអតិថិជនដោយសុភាព ខ្លី ច្បាស់
@@ -296,7 +285,7 @@ function buildSalesPrompt(userText, extraContext = "") {
 4. បើអតិថិជនចាប់អារម្មណ៍ ត្រូវដឹកទៅ package / price / next step
 
 របៀបឆ្លើយ:
-- ឆ្លើយជាភាសាខ្មែរ ជាចម្បង
+- ឆ្លើយជាភាសាខ្មែរ ជាចម្បង 🌐(លុះត្រាតែអ្នកប្រើសរសេរភាសាផ្សេង)
 - មិនឆ្លើយវែងពេក
 - មួយសារ ត្រូវមាន:
   - ចម្លើយខ្លីច្បាស់
@@ -349,12 +338,12 @@ app.post("/webhook", async (req, res) => {
         if (!senderId || !message) continue;
         if (message.is_echo) continue;
 
-        // ✅ Route ទៅ handleMessage (handles text/image/audio/video)
         await handleMessage(senderId, message, pageId);
       }
     }
 
     return res.sendStatus(200);
+
   } catch (error) {
     console.error("❌ Webhook error:", error?.response?.data || error.message || error);
     return res.sendStatus(500);
