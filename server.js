@@ -22,7 +22,7 @@ app.use(cors({
     'http://localhost:3000',
     '*'
   ],
-  credentials: falsa
+  credentials: false
 }));
 
 // =========================
