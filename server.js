@@ -48,8 +48,10 @@ async function transcribeAudio(audioBuffer) {
     contentType: "audio/m4a",
     knownLength: audioBuffer.length,
   });
-  formData.append("model", "whisper-large-v3");
+  formData.append("model", "whisper-large-v3-turbo");
   formData.append("language", "km");
+  formData.append("response_format", "text");
+  formData.append("temperature", "0");
 
   const groqRes = await fetchWithTimeout(
     "https://api.groq.com/openai/v1/audio/transcriptions",
