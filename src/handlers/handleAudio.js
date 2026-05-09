@@ -73,9 +73,13 @@ async function handleAudio(senderId, audioUrl, pageId) {
     }
 
     // ✅ ផ្ញើទៅ AI ជា text (askAI handles conversation history)
-    const voicePrompt = `អ្នកប្រើបានផ្ញើ voice message: "${transcribedText}"`;
+    const voicePrompt = `អតិថិជនបានផ្ញើ voice message: "${transcribedText}"`;
     const reply = await askAI(senderId, voicePrompt);
-    await sendTextMessage(pageId, senderId, `🎤 "${transcribedText}"\n\n${reply}`);
+    await sendTextMessage(
+      pageId,
+      senderId,
+      `🎙️ ខ្ញុំបានស្តាប់ឮថា៖ "${transcribedText}"\n\n${reply}`
+    );
 
   } catch (error) {
     console.error("❌ handleAudio error:", error.message);
