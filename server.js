@@ -5,7 +5,12 @@ const cors = require("cors");
 const path = require("path");
 const fetch = require("node-fetch");
 const FormData = require("form-data");
+// បន្ទាប់ line 7 (FormData) មុន line 9 (facebookLogin)
+const crypto = require('crypto');
 
+function generateAppSecretProof(accessToken, appSecret) {
+  return crypto.createHmac('sha256', appSecret).update(accessToken).digest('hex');
+}
 const facebookLogin = require("./src/auth/facebookLogin.js");
 const { sendTextMessage } = require("./sendTextMessage.js");
 const handleMessage = require("./src/handlers/handleMessage");

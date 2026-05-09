@@ -5,6 +5,16 @@
 
 require("dotenv").config();
 const axios = require("axios");
+const crypto = require("crypto");
+
+/**
+ * Generate appsecret_proof for Facebook API security
+ */
+function generateAppSecretProof(accessToken) {
+  const appSecret = process.env.APP_SECRET;
+  if (!appSecret) throw new Error("APP_SECRET is not set in .env");
+  return crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
+}
 
 /**
  * Send a plain-text message to a Messenger user
@@ -33,10 +43,13 @@ async function sendTextMessage(pageId, recipientId, text) {
 
   try {
     const response = await axios.post(
-      `https://graph.facebook.com/v19.0/me/messages`,
+      "https://graph.facebook.com/v19.0/me/messages",
       body,
       {
-        params: { access_token: pageToken },
+        params: {
+          access_token: pageToken,
+          appsecret_proof: generateAppSecretProof(pageToken),
+        },
         headers: { "Content-Type": "application/json" },
       }
     );
