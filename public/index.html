@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Khmer AI - ជំនួយការ AI ឆ្លាតវៃជាភាសាខ្មែរ</title>
+  <meta name="description" content="Khmer AI គឺជាជំនួយការ AI ដែលអាចឆ្លើយសំណួរជាភាសាខ្មែរ ២៤ ម៉ោង។ សាកល្បងឥឡូវនេះ!">
+  <meta name="keywords" content="Khmer AI, AI ខ្មែរ, chatbot ខ្មែរ, ជំនួយការ AI">
+  <meta property="og:title" content="Khmer AI - ជំនួយការ AI ឆ្លាតវៃ">
+  <meta property="og:description" content="ឆ្លើយសំណួរជាភាសាខ្មែរ ២៤ ម៉ោង">
+  <meta property="og:url" content="https://khmerai.store">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+  :root {
+  --bg-deep: #0a0a0f;
+  --bg-card: #12121a;
+  --bg-card-hover: #1a1a28;
+  --accent: #6366f1;
+  --accent-glow: rgba(99, 102, 241, 0.3);
+  --accent-light: #818cf8;
+  --accent-warm: #f59e0b;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a0;
+  --text-dim: #55556a;
+  --border: rgba(255, 255, 255, 0.06);
+  --glass: rgba(255, 255, 255, 0.03);
+}
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      scrollbar-width: thin;
+      scrollbar-color: var(--accent) var(--bg-deep);
+    }
+
+    body {
+      font-family: 'Noto Sans Khmer', sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      line-height: 1.8;
+    }
+
+    /* === NOISE OVERLAY === */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* === AMBIENT GRADIENT ORBS === */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .orb-1 {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(99,102,241,0.12), transparent 70%);
+      top: -200px; right: -100px;
+      animation: float-orb 20s ease-in-out infinite;
+    }
+    .orb-2 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(245,158,11,0.08), transparent);
+      bottom: -150px; left: -100px;
+      animation: float-orb 25s ease-in-out infinite reverse;
+    }
+    @keyframes float-orb {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(30px, -40px) scale(1.05); }
+      66% { transform: translate(-20px, 20px) scale(0.95); }
+    }
+
+    /* === NAV === */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 20px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+      backdrop-filter: blur(20px);
+      background: rgba(10, 10, 15, 0.7);
+      border-bottom: 1px solid var(--border);
+      transition: all 0.3s ease;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+    .logo-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-light));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+    .logo-text {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+    }
+    .logo-text span { color: var(--accent-light); }
+
+    .nav-cta {
+      padding: 10px 24px;
+      background: var(--accent);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      border: 1px solid transparent;
+    }
+    .nav-cta:hover {
+      background: transparent;
+      border-color: var(--accent);
+      color: var(--accent-light);
+      box-shadow: 0 0 30px var(--accent-glow);
+    }
+
+    /* === HERO === */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 120px 40px 80px;
+      position: relative;
+    }
+
+    .hero-content {
+      max-width: 800px;
+      text-align: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 13px;
+      color: var(--accent-light);
+      margin-bottom: 32px;
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      animation: fade-up 0.8s ease forwards;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      background: #22c55e;
+      border-radius: 50%;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    h1 {
+      font-size: clamp(40px, 7vw, 72px);
+      font-weight: 900;
+      line-height: 1.2;
+      margin-bottom: 24px;
+      opacity: 0;
+      animation: fade-up 0.8s ease 0.15s forwards;
+    }
+    h1 .gradient {
+      background: linear-gradient(135deg, var(--accent-light), var(--accent-warm));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-desc {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 560px;
+      margin: 0 auto 48px;
+      line-height: 2;
+      opacity: 0;
+      animation: fade-up 0.8s ease 0.3s forwards;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+      opacity: 0;
+      animation: fade-up 0.8s ease 0.45s forwards;
+    }
+
+    .btn-primary {
+      padding: 16px 40px;
+      background: linear-gradient(135deg, var(--accent), #4f46e5);
+      color: white;
+      text-decoration: none;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 16px;
+      transition: all 0.4s ease;
+      box-shadow: 0 8px 40px var(--accent-glow);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, transparent, rgba(255,255,255,0.1), transparent);
+      transform: translateX(-100%);
+      transition: transform 0.6s ease;
+    }
+    .btn-primary:hover::after { transform: translateX(100%); }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 50px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-secondary {
+      padding: 16px 40px;
+      background: var(--glass);
+      color: var(--text-primary);
+      text-decoration: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      transition: all 0.3s ease;
+    }
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      background: rgba(99, 102, 241, 0.05);
+    }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* === CHAT DEMO === */
+    .demo-section {
+      padding: 40px 40px 100px;
+      display: flex;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .chat-window {
+      width: 100%;
+      max-width: 520px;
+      background: var(--bg-card);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.4);
+      opacity: 0;
+      animation: fade-up 1s ease 0.6s forwards;
+    }
+    .chat-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .chat-header-dot {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-light));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .chat-header-name {
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .chat-body { padding: 24px; }
+
+    .chat-msg {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      opacity: 0;
+      animation: msg-appear 0.6s ease forwards;
+    }
+    .chat-msg:nth-child(1) { animation-delay: 1s; }
+    .chat-msg:nth-child(2) { animation-delay: 1.8s; }
+    .chat-msg:nth-child(3) { animation-delay: 2.6s; }
+
+    @keyframes msg-appear {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .chat-msg.user {
+      flex-direction: row-reverse;
+    }
+    .chat-msg .avatar {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+    .chat-msg.user .avatar {
+      background: var(--accent-warm);
+    }
+    .chat-msg.ai .avatar {
+      background: linear-gradient(135deg, var(--accent), var(--accent-light));
+    }
+    .chat-bubble {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.7;
+      max-width: 80%;
+    }
+    .chat-msg.user .chat-bubble {
+      background: var(--accent);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .chat-msg.ai .chat-bubble {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+      color: var(--text-primary);
+    }
+
+    .chat-input-bar {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .chat-input-bar input {
+      flex: 1;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 16px;
+      color: var(--text-secondary);
+      font-family: 'Noto Sans Khmer', sans-serif;
+      font-size: 13px;
+      outline: none;
+    }
+    .chat-input-bar button {
+      width: 38px; height: 38px;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: white;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.3s;
+    }
+    .chat-input-bar button:hover {
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    /* === FEATURES === */
+    .features {
+      padding: 100px 40px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .section-label {
+      text-align: center;
+      font-size: 13px;
+      color: var(--accent-light);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .section-title {
+      text-align: center;
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 800;
+      margin-bottom: 64px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 28px;
+      transition: all 0.4s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    .feature-card:hover {
+      border-color: rgba(99, 102, 241, 0.2);
+      background: var(--bg-card-hover);
+      transform: translateY(-4px);
+    }
+    .feature-card:hover::before { opacity: 1; }
+
+    .feature-icon {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 20px;
+    }
+    .feature-card:nth-child(1) .feature-icon { background: rgba(99, 102, 241, 0.12); }
+    .feature-card:nth-child(2) .feature-icon { background: rgba(245, 158, 11, 0.12); }
+    .feature-card:nth-child(3) .feature-icon { background: rgba(34, 197, 94, 0.12); }
+
+    .feature-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+
+    /* === CTA === */
+    .cta-section {
+      padding: 100px 40px;
+      text-align: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .cta-box {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 60px 40px;
+      background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(245,158,11,0.04));
+      border: 1px solid rgba(99, 102, 241, 0.15);
+      border-radius: 24px;
+      position: relative;
+    }
+    .cta-box h2 {
+      font-size: clamp(24px, 4vw, 36px);
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+    .cta-box p {
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      font-size: 16px;
+    }
+
+    /* === FOOTER === */
+    footer {
+      padding: 40px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 13px;
+      position: relative;
+      z-index: 2;
+    }
+    footer a {
+      color: var(--accent-light);
+      text-decoration: none;
+    }
+
+    /* === RESPONSIVE === */
+    @media (max-width: 768px) {
+      nav { padding: 16px 20px; }
+      .hero { padding: 100px 20px 60px; }
+      .hero-desc { font-size: 16px; }
+      .hero-actions { flex-direction: column; align-items: center; }
+      .btn-primary, .btn-secondary { width: 100%; max-width: 300px; text-align: center; }
+      .demo-section { padding: 20px 20px 80px; }
+      .features { padding: 60px 20px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .cta-section { padding: 60px 20px; }
+      .cta-box { padding: 40px 24px; }
+    }
+
+    /* === SCROLLBAR === */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-deep); }
+    ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient orbs -->
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <!-- Nav -->
+  <nav>
+  <a href="/" class="logo">
+    <div class="logo-icon">✦</div>
+    <div class="logo-text">Khmer <span>AI</span></div>
+  </a>
+
+  <a href="https://khmer-ai-chat.replit.app" class="nav-btn">ចូលប្រើ AI</a>
+</nav>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="badge">
+        <span class="badge-dot"></span>
+        ដំណើរការ ២៤ ម៉ោង
+      </div>
+      <h1>ជំនួយការ <span class="gradient">AI ឆ្លាតវៃ</span><br>ជាភាសាខ្មែរ</h1>
+      <p class="hero-desc">
+        សួរអ្វីក៏បាន ឆ្លើយភ្លាមៗ។ Khmer AI ជួយអ្នកស្វែងរកចម្លើយ សរសេរអត្ថបទ និងដោះស្រាយបញ្ហាគ្រប់បែបយ៉ាង។
+      </p>
+<nav>
+    <a href="/" class="logo">
+      <div class="logo-icon">✦</div>
+      <div class="logo-text">Khmer <span>AI</span></div>
+    </a>
+  <a href="https://khmer-ai-chat.replit.app" class="nav-btn">ចូលប្រើ AI</a>
+</nav>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chat Demo -->
+  <section class="demo-section">
+    <div class="chat-window">
+      <div class="chat-header">
+        <div class="chat-header-dot">✦</div>
+        <div class="chat-header-name">Kh AI</div>
+      </div>
+      <div class="chat-body">
+        <div class="chat-msg user">
+          <div class="avatar">👤</div>
+          <div class="chat-bubble">ជួយសរសេរ Content</div>
+        </div>
+        <div class="chat-msg ai">
+          <div class="avatar">✦</div>
+          <div class="chat-bubble">សូមទោស មានបញ្ហាតូចមួយ។ សូមព្យាយាម ម្ដងទៀត។</div>
+        </div>
+        <div class="chat-msg user">
+          <div class="avatar">👤</div>
+          <div class="chat-bubble">តើ Khmer AI ជួយអ្វីខ្លះ?</div>
+        </div>
+      </div>
+      <div class="chat-input-bar">
+        <input type="text" placeholder="សូរសំណួរ ឬសរសេរអ្វីមួយ..." readonly>
+        <button>➤</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="section-label">មុខងារ</div>
+    <div class="section-title">ហេតុអ្វីត្រូវជ្រើស Khmer AI?</div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">💬</div>
+        <h3>ឆ្លើយជាភាសាខ្មែរ</h3>
+        <p>យល់និងឆ្លើយជាភាសាខ្មែរដោយស្វ័យប្រវត្តិ។ សួរអ្វីក៏បាន ទទួលចម្លើយច្បាស់លាស់។</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>ឆ្លើយលឿនភ្លាមៗ</h3>
+        <p>ដំណើរការដោយបច្ចេកវិទ្យា AI ទំនើបបំផុត។ ទទួលចម្លើយក្នុងរយៈពេលតែប៉ុន្មានវិនាទី។</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🕐</div>
+        <h3>២៤ ម៉ោង ៧ ថ្ងៃ</h3>
+        <p>ដំណើរការគ្រប់ពេល ថ្ងៃយប់។ អ្នកអាចសួរសំណួរពេលណាក៏បាន។</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <nav>
+  <a href="/" class="logo">
+    <div class="logo-icon">✦</div>
+    <div class="logo-text">Khmer <span>AI</span></div>
+  </a>
+
+  <a href="https://khmer-ai-chat.replit.app" class="nav-btn">ចូលប្រើ AI</a>
+</nav>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>© 2026 <a href="/">Khmer AI</a> — ដំណើរការដោយ AI ទំនើប</p>
+  </footer>
+
+  <!-- Intersection Observer for scroll animations -->
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.style.opacity = '1';
+          entry.target.style.transform = 'translateY(0)';
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.feature-card, .cta-box').forEach(el => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(30px)';
+      el.style.transition = 'all 0.6s ease';
+      observer.observe(el);
+    });
+  </script>
+
+</body>
+</html>
