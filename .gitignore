@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env*.local
+
+# Database (we use Postgres / Neon, no local DB files)
+*.db
+*.db-journal
+
+# Logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vs/
+.idea/
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Expo
+.expo/
