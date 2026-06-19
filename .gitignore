@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # Logs
 logs
 *.log
@@ -34,4 +34,4 @@ cloudflared.exe
 android/
 ios/
 expo-env.d.ts
->>>>>>> 4e2398726674817a4dd63f1b016df62d1381baca
+
