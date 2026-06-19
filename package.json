@@ -42,7 +42,7 @@
     "@anthropic-ai/sdk": "^0.95.1",
 
     "@anthropic-ai/sdk": "^0.93.0",
- (fix website and blog route)
+ 
     "@expo/vector-icons": "^15.0.3",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
